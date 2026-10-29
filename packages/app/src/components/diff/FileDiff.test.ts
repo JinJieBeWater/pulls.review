@@ -5,17 +5,33 @@ import { nextTick } from 'vue'
 import { i18n } from '../../i18n'
 import { autoFetchFullFile } from '../../state/auto-fetch-full-file'
 import { createMockDiffsStore } from '../../stores/mock-diffs-store'
+import { diffVirtualizerKey } from './diff-virtualizer'
+import { buildFileDiff } from './file-diff-input'
 import FileDiff from './FileDiff.vue'
+
+const { diffInstances } = vi.hoisted(() => ({
+  diffInstances: [] as { owner: () => void, render: ReturnType<typeof vi.fn> }[],
+}))
 
 vi.mock('@pierre/diffs', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@pierre/diffs')>()
   class FileDiff {
-    render() {}
+    render = vi.fn()
+    constructor(_options: unknown, _workers: unknown, owner: () => void) {
+      diffInstances.push({ owner, render: this.render })
+    }
+
     cleanUp() {}
     setOptions() {}
+    setLineAnnotations() {}
     rerender() {}
   }
-  return { ...actual, FileDiff, VirtualizedFileDiff: FileDiff }
+  class VirtualizedFileDiff extends FileDiff {
+    constructor(options: unknown, _virtualizer: unknown, workers: unknown, _initial: unknown, owner: () => void) {
+      super(options, workers, owner)
+    }
+  }
+  return { ...actual, FileDiff, VirtualizedFileDiff }
 })
 
 const file: FileChange = {
@@ -61,6 +77,7 @@ let previousAutoFetch: boolean
 beforeEach(() => {
   previousAutoFetch = autoFetchFullFile.value
   TestIntersectionObserver.instances = []
+  diffInstances.length = 0
   vi.stubGlobal('IntersectionObserver', TestIntersectionObserver)
 })
 
@@ -84,6 +101,25 @@ async function intersect(isIntersecting = true) {
     observer.intersect(isIntersecting)
   await flushPromises()
 }
+
+describe('owner rendering', () => {
+  it.each([false, true])('renders on request until unmounted (virtualized: %s)', async (virtualized) => {
+    wrapper = mount(FileDiff, {
+      props: { store: createMockDiffsStore({}), file },
+      global: { plugins: [i18n], provide: virtualized ? { [diffVirtualizerKey]: {} } : {} },
+    })
+    await nextTick()
+    const { owner, render } = diffInstances[0]!
+    render.mockClear()
+    owner()
+    expect(render).toHaveBeenCalledWith(expect.objectContaining({ fileDiff: buildFileDiff(file) }))
+    wrapper.unmount()
+    wrapper = undefined
+    render.mockClear()
+    owner()
+    expect(render).not.toHaveBeenCalled()
+  })
+})
 
 describe('automatic full-file fetching', () => {
   it('fetches a full file only when it nears the viewport', async () => {

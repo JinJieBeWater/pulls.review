@@ -307,12 +307,23 @@ const pierreOptions = computed((): FileDiffOptions<undefined, undefined> => ({
     : {}),
 }))
 
+/** Renders the current diff into our container; pierre also calls it when it needs a re-render. */
+function renderInstance() {
+  if (!instance || !fileDiff.value || !containerRef.value)
+    return
+  instance.render({
+    fileDiff: fileDiff.value,
+    fileContainer: containerRef.value,
+    lineAnnotations: lineAnnotations.value.map(annotation => ({ ...annotation })),
+  })
+}
+
 function mount() {
   // Recreated on every render rather than reused + `setOptions()`: switching `diffStyle`
   // (unified/split) on an existing instance left stale, un-columned DOM behind. `cleanUp()`
   // would otherwise `.remove()` our own template-owned container from the DOM entirely
-  // (its default assumption is that it created the container itself) - the third
-  // `isContainerManaged: true` constructor arg opts out of that.
+  // (its default assumption is that it created the container itself) - passing the
+  // `requestOwnerRender` constructor arg marks the container as ours and opts out of that.
   instance?.cleanUp()
   selectedRange.value = undefined
 
@@ -325,14 +336,10 @@ function mount() {
   // `themeType`: defaults to `'system'` (OS-level `prefers-color-scheme`) otherwise,
   // ignoring our own dark-mode toggle entirely - pin it to the app's actual state.
   instance = virtualizer
-    ? new VirtualizedFileDiff(pierreOptions.value, virtualizer, undefined, undefined, true)
-    : new PierreFileDiff(pierreOptions.value, undefined, true)
+    ? new VirtualizedFileDiff(pierreOptions.value, virtualizer, undefined, undefined, renderInstance)
+    : new PierreFileDiff(pierreOptions.value, undefined, renderInstance)
 
-  instance.render({
-    fileDiff: fileDiff.value,
-    fileContainer: containerRef.value,
-    lineAnnotations: lineAnnotations.value.map(annotation => ({ ...annotation })),
-  })
+  renderInstance()
 }
 
 onMounted(mount)
@@ -352,19 +359,7 @@ watch(
   },
 )
 
-watch(
-  [fileDiff, containerRef] as const,
-  ([fileDiff, containerRef]) => {
-    if (!fileDiff || !containerRef) {
-      return
-    }
-    instance?.render({
-      fileDiff,
-      fileContainer: containerRef,
-      lineAnnotations: lineAnnotations.value.map(annotation => ({ ...annotation })),
-    })
-  },
-)
+watch([fileDiff, containerRef] as const, renderInstance)
 
 // Plain clones, not the reactive proxies - pierre compares/caches these objects.
 // `VirtualizedFileDiff.setLineAnnotations` only flags a forced render; nothing schedules
