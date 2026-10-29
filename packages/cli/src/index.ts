@@ -1,12 +1,9 @@
-import { readFile } from 'node:fs/promises'
 import process from 'node:process'
-import { fileURLToPath } from 'node:url'
 import { parseArgs } from 'node:util'
 import { createDevServer } from 'devframe/adapters/dev'
-import { H3 } from 'h3'
 import devframe from './devframe'
-import { staticBase } from './html-base'
 import { browserPath, pageFor, sharedAnalysisQuery } from './page'
+import { createAppWithRefRoutes } from './spa'
 
 const HELP = `Usage: pulls.review [target] [options]
 
@@ -39,23 +36,6 @@ Options:
 
 To analyze a GitHub pull request from CI, use @pulls.review/actions.
 `
-
-/**
- * devframe's SPA fallback skips any path that looks like a file, and refs do: `main...feat`
- * ends in `.feat`, `v1.2` in `.2`. Pages whose path carries a ref (local ones, and GitHub
- * compares under `/gh/`) get the SPA's `index.html` here, before devframe's static handler sees them.
- */
-function createAppWithRefRoutes(basePath = '/'): H3 {
-  const app = new H3()
-  app.use(staticBase(basePath))
-  const index = fileURLToPath(new URL('./client/index.html', import.meta.url))
-  app.use(async (event, next) => {
-    if (!event.url.pathname.startsWith(basePath) || !/^(?:compare|branch|commit|gh)\//.test(event.url.pathname.slice(basePath.length)) || !event.req.headers.get('accept')?.includes('text/html'))
-      return next()
-    return new Response(await readFile(index, 'utf8'), { headers: { 'Content-Type': 'text/html; charset=utf-8' } })
-  })
-  return app
-}
 
 async function main() {
   const { values: flags, positionals } = parseArgs({
