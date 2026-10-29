@@ -27,6 +27,8 @@ AI analysis uses a key from Settings, or a coding agent installed here (Claude
 Code, OpenCode, Pi) when "Local agent" is the provider in Settings.
 
 Options:
+  -d, --daemon    open this worktree in the background multi-repo server
+  --stop          stop the daemon and its worktree servers
   --worktree      open the uncommitted changes against HEAD
   --from <login>  with a GitHub pull request, load the AI analysis <login> shared
                   on it (the site's ?from=<login>), its latest version every time
@@ -40,6 +42,8 @@ To analyze a GitHub pull request from CI, use @pulls.review/actions.
 async function main() {
   const { values: flags, positionals } = parseArgs({
     options: {
+      'daemon': { type: 'boolean', short: 'd' },
+      'stop': { type: 'boolean' },
       'worktree': { type: 'boolean' },
       'from': { type: 'string' },
       'port': { type: 'string' },
@@ -50,6 +54,11 @@ async function main() {
   })
   if (flags.help) {
     process.stdout.write(HELP)
+    return
+  }
+  if (flags.daemon || flags.stop) {
+    const { routeDaemon } = await import('./daemon/cli')
+    await routeDaemon(flags, positionals)
     return
   }
   const page = browserPath(await pageFor(process.cwd(), positionals[0], !!flags.worktree)) + sharedAnalysisQuery(positionals[0], flags.from)
