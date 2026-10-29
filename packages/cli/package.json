@@ -20,7 +20,8 @@
     "devframe"
   ],
   "exports": {
-    "./devframe": "./dist/devframe.mjs"
+    "./devframe": "./dist/devframe.mjs",
+    "./spa": "./dist/spa.mjs"
   },
   "bin": {
     "pulls.review": "./bin.mjs",

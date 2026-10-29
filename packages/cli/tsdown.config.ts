@@ -1,7 +1,11 @@
 import { defineConfig } from 'tsdown'
 
 export default defineConfig({
-  entry: ['src/index.ts', 'src/devframe.ts'],
+  entry: {
+    'index': 'src/index.ts',
+    'devframe': 'src/devframe.ts',
+    'spa': 'src/spa.ts',
+  },
   platform: 'node',
   dts: false,
 })
