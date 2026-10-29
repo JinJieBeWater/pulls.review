@@ -5,6 +5,7 @@ import { parseArgs } from 'node:util'
 import { createDevServer } from 'devframe/adapters/dev'
 import { H3 } from 'h3'
 import devframe from './devframe'
+import { staticBase } from './html-base'
 import { browserPath, pageFor, sharedAnalysisQuery } from './page'
 
 const HELP = `Usage: pulls.review [target] [options]
@@ -44,11 +45,12 @@ To analyze a GitHub pull request from CI, use @pulls.review/actions.
  * ends in `.feat`, `v1.2` in `.2`. Pages whose path carries a ref (local ones, and GitHub
  * compares under `/gh/`) get the SPA's `index.html` here, before devframe's static handler sees them.
  */
-function createAppWithRefRoutes(): H3 {
+function createAppWithRefRoutes(basePath = '/'): H3 {
   const app = new H3()
+  app.use(staticBase(basePath))
   const index = fileURLToPath(new URL('./client/index.html', import.meta.url))
   app.use(async (event, next) => {
-    if (!/^\/(?:compare|branch|commit|gh)\//.test(event.url.pathname) || !event.req.headers.get('accept')?.includes('text/html'))
+    if (!event.url.pathname.startsWith(basePath) || !/^(?:compare|branch|commit|gh)\//.test(event.url.pathname.slice(basePath.length)) || !event.req.headers.get('accept')?.includes('text/html'))
       return next()
     return new Response(await readFile(index, 'utf8'), { headers: { 'Content-Type': 'text/html; charset=utf-8' } })
   })

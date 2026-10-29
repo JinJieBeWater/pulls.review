@@ -7,13 +7,11 @@ import { LOCAL_HUB_BASE_PATH } from '../core/src/local-rpc'
 import { alias, features } from './vite.config.shared'
 
 /**
- * One bundle serves at `/` standalone and at the hub's mount path, so its base is
- * decided in the page: before any asset loads, a `<base>` names the mount path, and
- * relative asset URLs, the router and devframe's connection lookup all resolve from it.
- * A deep link (`/compare/a...b`) reloads fine, as the base never follows the route.
+ * The CLI supplies a static base before any assets. A hub loads this bundle without
+ * the CLI's HTML middleware, so retain the page-decided base as a fallback there.
  */
 function runtimeBase(): Plugin {
-  const script = `document.write('<base href="' + (location.pathname.startsWith(${JSON.stringify(LOCAL_HUB_BASE_PATH)}) ? ${JSON.stringify(LOCAL_HUB_BASE_PATH)} : '/') + '">')`
+  const script = `if (!document.querySelector('base')) document.write('<base href="' + (location.pathname.startsWith(${JSON.stringify(LOCAL_HUB_BASE_PATH)}) ? ${JSON.stringify(LOCAL_HUB_BASE_PATH)} : '/') + '">')`
   return {
     name: 'pulls-review:runtime-base',
     transformIndexHtml: html => html.replace('<head>', `<head>\n    <script>${script}</script>`),
