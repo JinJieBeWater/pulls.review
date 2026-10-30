@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process'
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
@@ -36,6 +36,7 @@ describe('repo info', () => {
     git(repo, 'switch', '-q', '-c', 'feat')
 
     expect(await readRepoInfo(repo)).toMatchObject({
+      root: realpathSync(repo),
       currentBranch: 'feat',
       defaultBranch: { name: 'main', ref: 'main' },
       branches: expect.arrayContaining(['main', 'feat']),

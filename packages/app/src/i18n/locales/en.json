@@ -453,6 +453,7 @@
       "head": "Head",
       "compare": "Compare",
       "shortcuts": "Shortcuts",
+      "repository": "Current repository",
       "worktree": "Uncommitted changes",
       "recentCommits": "Recent commits",
       "branches": "Branches",

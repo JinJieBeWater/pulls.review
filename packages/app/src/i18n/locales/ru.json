@@ -444,6 +444,7 @@
       "head": "Head",
       "compare": "Сравнить",
       "shortcuts": "Быстрые ссылки",
+      "repository": "Текущий репозиторий",
       "worktree": "Незакоммиченные изменения",
       "recentCommits": "Последние коммиты",
       "branches": "Ветки",

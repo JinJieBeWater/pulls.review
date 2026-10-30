@@ -444,6 +444,7 @@
       "head": "Head",
       "compare": "Bandingkan",
       "shortcuts": "Pintasan",
+      "repository": "Repositori saat ini",
       "worktree": "Perubahan yang belum di-commit",
       "recentCommits": "Commit terbaru",
       "branches": "Branch",

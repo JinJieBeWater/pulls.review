@@ -11,6 +11,7 @@ export type LocalPage
     | { kind: 'commit', sha: string }
 
 export const RepoInfoSchema = v.object({
+  root: v.string(),
   currentBranch: v.optional(v.string()),
   defaultBranch: v.optional(v.object({ name: v.string(), ref: v.string() })),
   branches: v.array(v.string()),

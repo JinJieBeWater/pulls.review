@@ -444,6 +444,7 @@
       "head": "头部",
       "compare": "比较",
       "shortcuts": "快捷方式",
+      "repository": "当前仓库",
       "worktree": "未提交的更改",
       "recentCommits": "最近的提交",
       "branches": "分支",

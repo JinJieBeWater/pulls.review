@@ -444,6 +444,7 @@
       "head": "ヘッド",
       "compare": "比較",
       "shortcuts": "ショートカット",
+      "repository": "現在のリポジトリ",
       "worktree": "コミットされていない変更",
       "recentCommits": "最近のコミット",
       "branches": "ブランチ",

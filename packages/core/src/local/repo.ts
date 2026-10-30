@@ -1,6 +1,8 @@
 import { tryGit } from './git'
 
 export interface RepoInfo {
+  /** The worktree's top-level directory. */
+  root: string
   /** `undefined` on a detached HEAD. */
   currentBranch?: string
   /** What a branch is reviewed against, like the PR it would become (see `resolveDefaultBranch`). */
@@ -37,7 +39,8 @@ export async function readCurrentBranch(cwd: string): Promise<string | undefined
 }
 
 export async function readRepoInfo(cwd: string, commitCount = 10): Promise<RepoInfo> {
-  const [currentBranch, defaultBranch, branches, tags, log] = await Promise.all([
+  const [root, currentBranch, defaultBranch, branches, tags, log] = await Promise.all([
+    tryGit(cwd, ['rev-parse', '--show-toplevel']).then(out => out?.trim() || cwd),
     readCurrentBranch(cwd),
     resolveDefaultBranch(cwd),
     lines(cwd, ['for-each-ref', '--sort=-committerdate', '--format=%(refname:short)', 'refs/heads']),
@@ -45,6 +48,7 @@ export async function readRepoInfo(cwd: string, commitCount = 10): Promise<RepoI
     lines(cwd, ['log', `-${commitCount}`, '--format=%H%x00%s']),
   ])
   return {
+    root,
     currentBranch,
     defaultBranch,
     branches,
