@@ -267,16 +267,15 @@ export function createDiffsStore(source: DiffSource, opts: DiffsStoreOptions): D
   const fileContent = loadFile && {
     async load(file: FileChange) {
       const loaded = diff.value
-      const key = cacheKey.value
-      if (!loaded?.base || !loaded.head || !key)
+      if (!loaded?.base || !loaded.head)
         throw new Error(t('errors.diffNotLoaded'))
       const loadSide = async (path: string, sha: string) => {
-        const cached = await cache.fileContents.get(key, sha, path)
+        const cached = await cache.fileContents.get(sha, path)
         if (cached !== undefined)
           return cached
         const content = await loadFile(path, sha)
         if (content !== undefined)
-          await cache.fileContents.set(key, sha, path, content)
+          await cache.fileContents.set(sha, path, content)
         return content
       }
       const [old, current] = await Promise.all([
