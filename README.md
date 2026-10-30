@@ -11,6 +11,26 @@
 
 Pull request review made simple. Groups changed files, summarizes what matters, and reviews them one scope at a time.
 
+## Fork: multi-repo daemon
+
+This `multi-repo` branch of [JinJieBeWater/pulls.review](https://github.com/JinJieBeWater/pulls.review) adds one local entry for every repository: a background server on `http://127.0.0.1:7855` that opens any registered repository or worktree. It is not published to npm; install it from source (Node 20+, pnpm via corepack):
+
+```sh
+git clone -b multi-repo https://github.com/JinJieBeWater/pulls.review
+cd pulls.review
+corepack enable && pnpm install && pnpm build
+cd packages/cli && pnpm link --global
+```
+
+Then, inside any git repository:
+
+```sh
+pulls.review -d       # register this repository and open it in the daemon
+pulls.review --stop   # stop the daemon and its worktree servers
+```
+
+Switch, add or remove repositories from the "Current repository" menu on the local home. Registrations live in `~/.pulls.review`; settings stay in the browser, shared by every repository on the daemon's origin. Without `-d`, `pulls.review` works like upstream. Update with `git pull && pnpm install && pnpm build`, then `pulls.review --stop` and `pulls.review -d`.
+
 ## Use on Website
 
 To use pulls.review on the website, simply visit [pulls.review](https://pulls.review) and follow the instructions to connect your GitHub account and start reviewing pull requests directly in your browser.
