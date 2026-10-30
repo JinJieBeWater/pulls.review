@@ -23,6 +23,16 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="theme-color" media="(prefers-color-scheme: light)" content="white" />
     <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#222222" />
+    <!-- Apply the stored color scheme before first paint, so dark mode doesn't flash white. -->
+    <script>
+      try {
+        const s = localStorage.getItem('vueuse-color-scheme')
+        document.documentElement.classList.toggle(
+          'dark',
+          s === 'dark' || (s !== 'light' && matchMedia('(prefers-color-scheme: dark)').matches),
+        )
+      } catch {}
+    </script>
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
     <title>Pull reviews made clear and organized - pulls.review</title>
