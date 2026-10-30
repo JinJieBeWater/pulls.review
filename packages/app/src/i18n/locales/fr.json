@@ -451,6 +451,19 @@
       "against": "par rapport à {base}",
       "current": "Branche actuelle",
       "github": "Ou une pull request, une comparaison ou un commit GitHub"
+    },
+    "repositories": {
+      "switch": "Changer de dépôt",
+      "add": "Ajouter un dépôt",
+      "path": "Chemin du dépôt",
+      "remove": "Retirer de la liste",
+      "loading": "Chargement des arbres de travail…",
+      "search": "Filtrer les dépôts…",
+      "noMatch": "Aucun dépôt correspondant",
+      "detached": "(détaché)",
+      "failure": "La requête a échoué. Relancez pulls.review -d si votre session a expiré.",
+      "requestFailed": "La requête a échoué. Réessayez.",
+      "invalidPath": "Impossible d’enregistrer ce chemin comme dépôt Git."
     }
   }
 }

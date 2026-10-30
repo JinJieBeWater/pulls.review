@@ -451,6 +451,19 @@
       "against": "gegen {base}",
       "current": "Ausgecheckt",
       "github": "Oder ein GitHub-Pull-Request, -Vergleich oder -Commit"
+    },
+    "repositories": {
+      "switch": "Repository wechseln",
+      "add": "Repository hinzufügen",
+      "path": "Repository-Pfad",
+      "remove": "Registrierung entfernen",
+      "loading": "Worktrees werden geladen…",
+      "search": "Repositorys filtern…",
+      "noMatch": "Kein passendes Repository",
+      "detached": "(losgelöst)",
+      "failure": "Anfrage fehlgeschlagen. Führe pulls.review -d erneut aus, wenn deine Sitzung abgelaufen ist.",
+      "requestFailed": "Anfrage fehlgeschlagen. Versuche es erneut.",
+      "invalidPath": "Dieser Pfad kann nicht als Git-Repository registriert werden."
     }
   }
 }

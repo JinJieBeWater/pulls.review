@@ -451,6 +451,19 @@
       "against": "{base} に対して",
       "current": "チェックアウト中",
       "github": "または GitHub のプルリクエスト・比較・コミット"
+    },
+    "repositories": {
+      "switch": "リポジトリを切り替え",
+      "add": "リポジトリを追加",
+      "path": "リポジトリのパス",
+      "remove": "登録を解除",
+      "loading": "ワークツリーを読み込み中…",
+      "search": "リポジトリを絞り込む…",
+      "noMatch": "一致するリポジトリはありません",
+      "detached": "(分離状態)",
+      "failure": "リクエストに失敗しました。セッションが切れた場合は pulls.review -d を再実行してください。",
+      "requestFailed": "リクエストに失敗しました。再試行してください。",
+      "invalidPath": "このパスを Git リポジトリとして登録できません。"
     }
   }
 }

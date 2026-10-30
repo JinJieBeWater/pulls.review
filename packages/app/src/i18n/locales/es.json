@@ -451,6 +451,19 @@
       "against": "frente a {base}",
       "current": "Rama actual",
       "github": "O un pull request, comparación o commit de GitHub"
+    },
+    "repositories": {
+      "switch": "Cambiar de repositorio",
+      "add": "Añadir repositorio",
+      "path": "Ruta del repositorio",
+      "remove": "Quitar registro",
+      "loading": "Cargando árboles de trabajo…",
+      "search": "Filtrar repositorios…",
+      "noMatch": "Ningún repositorio coincide",
+      "detached": "(separado)",
+      "failure": "La solicitud falló. Ejecuta pulls.review -d de nuevo si tu sesión ha caducado.",
+      "requestFailed": "La solicitud falló. Inténtalo de nuevo.",
+      "invalidPath": "No se puede registrar esta ruta como repositorio Git."
     }
   }
 }

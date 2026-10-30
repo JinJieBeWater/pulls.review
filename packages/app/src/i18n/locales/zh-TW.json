@@ -451,6 +451,19 @@
       "against": "對比 {base}",
       "current": "目前分支",
       "github": "或開啟 GitHub 的 Pull Request、比較或提交"
+    },
+    "repositories": {
+      "switch": "切換儲存庫",
+      "add": "新增儲存庫",
+      "path": "儲存庫路徑",
+      "remove": "移除登記",
+      "loading": "正在載入工作樹…",
+      "search": "篩選儲存庫…",
+      "noMatch": "沒有符合的儲存庫",
+      "detached": "（分離 HEAD）",
+      "failure": "請求失敗。如果工作階段已過期，請重新執行 pulls.review -d。",
+      "requestFailed": "請求失敗，請重試。",
+      "invalidPath": "無法將此路徑登記為 Git 儲存庫。"
     }
   }
 }

@@ -451,6 +451,19 @@
       "against": "terhadap {base}",
       "current": "Branch saat ini",
       "github": "Atau pull request, perbandingan, atau commit GitHub"
+    },
+    "repositories": {
+      "switch": "Ganti repositori",
+      "add": "Tambah repositori",
+      "path": "Jalur repositori",
+      "remove": "Hapus pendaftaran",
+      "loading": "Memuat worktree…",
+      "search": "Saring repositori…",
+      "noMatch": "Tidak ada repositori yang cocok",
+      "detached": "(terlepas)",
+      "failure": "Permintaan gagal. Jalankan pulls.review -d lagi jika sesi Anda kedaluwarsa.",
+      "requestFailed": "Permintaan gagal. Coba lagi.",
+      "invalidPath": "Jalur ini tidak dapat didaftarkan sebagai repositori Git."
     }
   }
 }

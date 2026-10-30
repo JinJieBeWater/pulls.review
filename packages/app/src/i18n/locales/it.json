@@ -451,6 +451,19 @@
       "against": "rispetto a {base}",
       "current": "Branch attuale",
       "github": "Oppure una pull request, un confronto o un commit GitHub"
+    },
+    "repositories": {
+      "switch": "Cambia repository",
+      "add": "Aggiungi repository",
+      "path": "Percorso del repository",
+      "remove": "Rimuovi registrazione",
+      "loading": "Caricamento degli alberi di lavoro…",
+      "search": "Filtra repository…",
+      "noMatch": "Nessun repository corrispondente",
+      "detached": "(scollegato)",
+      "failure": "Richiesta non riuscita. Esegui di nuovo pulls.review -d se la sessione è scaduta.",
+      "requestFailed": "Richiesta non riuscita. Riprova.",
+      "invalidPath": "Impossibile registrare questo percorso come repository Git."
     }
   }
 }

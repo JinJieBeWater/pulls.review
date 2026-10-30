@@ -460,6 +460,19 @@
       "against": "against {base}",
       "current": "Checked out",
       "github": "Or a GitHub pull request, compare or commit"
+    },
+    "repositories": {
+      "switch": "Switch repository",
+      "add": "Add repository",
+      "path": "Repository path",
+      "remove": "Remove registration",
+      "loading": "Loading worktrees…",
+      "search": "Filter repositories…",
+      "noMatch": "No matching repository",
+      "detached": "(detached)",
+      "failure": "Request failed. Run pulls.review -d again if your session expired.",
+      "requestFailed": "Request failed. Try again.",
+      "invalidPath": "Cannot register this path as a Git repository."
     }
   }
 }
