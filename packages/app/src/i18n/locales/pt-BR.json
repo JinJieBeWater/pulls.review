@@ -451,6 +451,19 @@
       "against": "em relação a {base}",
       "current": "Branch atual",
       "github": "Ou um pull request, comparação ou commit do GitHub"
+    },
+    "repositories": {
+      "switch": "Trocar de repositório",
+      "add": "Adicionar repositório",
+      "path": "Caminho do repositório",
+      "remove": "Remover registro",
+      "loading": "Carregando árvores de trabalho…",
+      "search": "Filtrar repositórios…",
+      "noMatch": "Nenhum repositório correspondente",
+      "detached": "(desanexado)",
+      "failure": "A solicitação falhou. Execute pulls.review -d novamente se sua sessão expirou.",
+      "requestFailed": "A solicitação falhou. Tente novamente.",
+      "invalidPath": "Não é possível registrar este caminho como repositório Git."
     }
   }
 }

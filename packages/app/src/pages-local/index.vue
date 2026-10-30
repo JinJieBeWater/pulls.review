@@ -14,6 +14,7 @@ import RefAutocomplete from '../components/RefAutocomplete.vue'
 import { useDocumentTitle } from '../composables/useDocumentTitle'
 import { localRpcKey } from '../local/local-rpc-key'
 import { readRepoInfo, routeForPage } from '../local/pages'
+import RepositorySwitcher from '../local/RepositorySwitcher.vue'
 import { routeFromGithubUrl } from '../source-routes'
 
 /** Branches listed; the rest stay reachable by typing them. */
@@ -78,11 +79,7 @@ useDocumentTitle(() => t('local.picker.title'))
             <h2 class="text-xs font-mono op-fade">
               {{ $t('local.picker.repository') }}
             </h2>
-            <div class="h-9 flex items-center gap-2 border border-base rounded bg-raised px-2 text-sm">
-              <span class="i-ph:folder-duotone shrink-0 op-fade" aria-hidden="true" />
-              <span class="shrink-0 font-mono">{{ info?.root.split('/').pop() }}</span>
-              <span class="min-w-0 flex-1 truncate text-xs op-fade" :title="info?.root">{{ info?.root }}</span>
-            </div>
+            <RepositorySwitcher :root="info?.root" />
             <form class="flex items-stretch gap-2" @submit.prevent="compare">
               <RefAutocomplete v-model="base" :suggestions="suggestions" :placeholder="$t('local.picker.base')" icon="i-ph:git-branch-duotone" class="flex-1" />
               <span class="self-center font-mono op-fade" aria-hidden="true">...</span>

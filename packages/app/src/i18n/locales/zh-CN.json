@@ -451,6 +451,19 @@
       "against": "对比 {base}",
       "current": "当前分支",
       "github": "或打开 GitHub 的 Pull Request、比较或提交"
+    },
+    "repositories": {
+      "switch": "切换仓库",
+      "add": "添加仓库",
+      "path": "仓库路径",
+      "remove": "移除登记",
+      "loading": "正在加载工作树…",
+      "search": "筛选仓库…",
+      "noMatch": "没有匹配的仓库",
+      "detached": "（分离头指针）",
+      "failure": "请求失败。如果会话已过期，请重新运行 pulls.review -d。",
+      "requestFailed": "请求失败，请重试。",
+      "invalidPath": "无法将此路径登记为 Git 仓库。"
     }
   }
 }
