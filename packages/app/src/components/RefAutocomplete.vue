@@ -8,7 +8,7 @@ export interface RefSuggestion {
   kind: 'branch' | 'tag'
 }
 
-// The root renders no element of its own: route `class` etc. to the field.
+// The root renders the wrapper the caller lays out: route `class` etc. there; the field fills it.
 defineOptions({ inheritAttrs: false })
 
 defineProps<{
@@ -27,10 +27,9 @@ const ICONS: Record<RefSuggestion['kind'], string> = {
 </script>
 
 <template>
-  <AutocompleteRoot v-model="model" open-on-focus open-on-click>
+  <AutocompleteRoot v-model="model" v-bind="$attrs" class="min-w-0 flex" open-on-focus open-on-click>
     <AutocompleteAnchor
-      v-bind="$attrs"
-      class="h-9 min-w-0 inline-flex items-center gap-2 border border-base rounded bg-raised px-2 text-sm transition focus-within:ring-2 focus-within:ring-primary-500/40"
+      class="h-9 min-w-0 inline-flex flex-1 items-center gap-2 border border-base rounded bg-raised px-2 text-sm transition focus-within:ring-2 focus-within:ring-primary-500/40"
     >
       <span v-if="icon" :class="icon" class="shrink-0 op-fade" aria-hidden="true" />
       <AutocompleteInput
