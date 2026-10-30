@@ -29,7 +29,8 @@ const info = ref<RepoInfo>()
 const base = ref('')
 const head = ref('')
 const suggestions = computed<RefSuggestion[]>(() => [
-  ...(info.value?.branches ?? []).map(name => ({ name, kind: 'branch' as const })),
+  // The default base is often a remote ref (`origin/main`), which the local branches don't list.
+  ...[...new Set([info.value?.defaultBranch?.ref, ...(info.value?.branches ?? [])].filter(name => name !== undefined))].map(name => ({ name, kind: 'branch' as const })),
   ...(info.value?.tags ?? []).map(name => ({ name, kind: 'tag' as const })),
 ])
 /** The checked-out branch, when it isn't the default branch itself. */
