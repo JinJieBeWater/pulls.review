@@ -2,6 +2,7 @@
 <script setup lang="ts">
 import { usePortalTarget } from '@antfu/design/composables/portalTarget'
 import { AutocompleteAnchor, AutocompleteContent, AutocompleteInput, AutocompleteItem, AutocompletePortal, AutocompleteRoot, AutocompleteViewport } from 'reka-ui'
+import { ref } from 'vue'
 
 export interface RefSuggestion {
   name: string
@@ -18,6 +19,8 @@ defineProps<{
 }>()
 
 const model = defineModel<string>({ default: '' })
+/** Filter only once the user types: a filled field opens on every ref, not just the one it holds. */
+const typed = ref(false)
 
 const portalTo = usePortalTarget(() => undefined)
 const ICONS: Record<RefSuggestion['kind'], string> = {
@@ -27,7 +30,7 @@ const ICONS: Record<RefSuggestion['kind'], string> = {
 </script>
 
 <template>
-  <AutocompleteRoot v-model="model" v-bind="$attrs" class="min-w-0 flex" open-on-focus open-on-click>
+  <AutocompleteRoot v-model="model" v-bind="$attrs" class="min-w-0 flex" :ignore-filter="!typed" open-on-focus open-on-click @update:open="open => open || (typed = false)">
     <AutocompleteAnchor
       class="h-9 min-w-0 inline-flex flex-1 items-center gap-2 border border-base rounded bg-raised px-2 text-sm transition focus-within:ring-2 focus-within:ring-primary-500/40"
     >
@@ -36,13 +39,14 @@ const ICONS: Record<RefSuggestion['kind'], string> = {
         :placeholder="placeholder"
         :aria-label="placeholder"
         class="min-w-0 flex-1 bg-transparent color-base font-mono outline-none placeholder:op-mute"
+        @input="typed = true"
       />
     </AutocompleteAnchor>
     <AutocompletePortal :to="portalTo">
       <AutocompleteContent
         position="popper"
         :side-offset="6"
-        class="z-dropdown max-h-72 min-w-[--reka-combobox-trigger-width] overflow-auto border border-base rounded-lg bg-glass:75 p-1 shadow-lg"
+        class="z-dropdown max-h-72 min-w-[--reka-combobox-trigger-width] overflow-auto border border-base rounded-lg bg-glass:75 p-1 shadow-lg [&:not(:has([role=option]))]:hidden!"
         data-af-animate
       >
         <AutocompleteViewport>
