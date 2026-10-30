@@ -29,4 +29,22 @@ describe('flatKeys', () => {
     await storage.removeItem('review:sha')
     expect(await storage.getKeys('review:')).toEqual([])
   })
+
+  it('stores keys longer than a file name allows', async () => {
+    const storage = createStorage({ driver: flatKeys(fsDriver({ base: dir })) })
+    const scope = `local:${encodeURIComponent(`/Users/me/${'deep/'.repeat(20)}worktree`)}@origin%2Fdev...feature`
+    const a = `file-content:${scope}:e40bcd29:docs/${'part/'.repeat(10)}a.md`
+    const b = `file-content:${scope}:e40bcd29:docs/${'part/'.repeat(10)}b.md`
+    await storage.setItem(a, 'a')
+    await storage.setItem(b, 'b')
+
+    expect(await storage.getItem(a)).toBe('a')
+    expect(await storage.getItem(b)).toBe('b')
+    // A listed key isn't the original text, but still addresses its entry.
+    const listed = await storage.getKeys('file-content:')
+    expect(listed).toHaveLength(2)
+    expect((await storage.getItems(listed)).map(({ value }) => value).sort()).toEqual(['a', 'b'])
+    await Promise.all(listed.map(key => storage.removeItem(key)))
+    expect(await storage.getKeys('file-content:')).toEqual([])
+  })
 })
