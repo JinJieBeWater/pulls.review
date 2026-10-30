@@ -444,6 +444,7 @@
       "head": "Head",
       "compare": "Vergleichen",
       "shortcuts": "Schnellzugriff",
+      "repository": "Aktuelles Repository",
       "worktree": "Nicht committete Änderungen",
       "recentCommits": "Letzte Commits",
       "branches": "Branches",

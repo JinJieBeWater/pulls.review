@@ -74,20 +74,30 @@ useDocumentTitle(() => t('local.picker.title'))
           <p class="max-w-md text-sm leading-relaxed op-fade">
             {{ $t('local.picker.tagline') }}
           </p>
-          <form class="max-w-md flex items-stretch gap-2" @submit.prevent="compare">
-            <RefAutocomplete v-model="base" :suggestions="suggestions" :placeholder="$t('local.picker.base')" icon="i-ph:git-branch-duotone" class="flex-1" />
-            <span class="self-center font-mono op-fade" aria-hidden="true">...</span>
-            <RefAutocomplete v-model="head" :suggestions="suggestions" :placeholder="$t('local.picker.head')" class="flex-1" />
-            <ActionButton
-              type="submit"
-              variant="primary"
-              class="pl-3 pr-4"
-              icon="i-ph-arrow-right-bold"
-              :disabled="!base.trim() || !head.trim()"
-            >
-              {{ $t('local.picker.compare') }}
-            </ActionButton>
-          </form>
+          <div class="max-w-md flex flex-col gap-3">
+            <h2 class="text-xs font-mono op-fade">
+              {{ $t('local.picker.repository') }}
+            </h2>
+            <div class="h-9 flex items-center gap-2 border border-base rounded bg-raised px-2 text-sm">
+              <span class="i-ph:folder-duotone shrink-0 op-fade" aria-hidden="true" />
+              <span class="shrink-0 font-mono">{{ info?.root.split('/').pop() }}</span>
+              <span class="min-w-0 flex-1 truncate text-xs op-fade" :title="info?.root">{{ info?.root }}</span>
+            </div>
+            <form class="flex items-stretch gap-2" @submit.prevent="compare">
+              <RefAutocomplete v-model="base" :suggestions="suggestions" :placeholder="$t('local.picker.base')" icon="i-ph:git-branch-duotone" class="flex-1" />
+              <span class="self-center font-mono op-fade" aria-hidden="true">...</span>
+              <RefAutocomplete v-model="head" :suggestions="suggestions" :placeholder="$t('local.picker.head')" class="flex-1" />
+              <ActionButton
+                type="submit"
+                variant="primary"
+                class="pl-3 pr-4"
+                icon="i-ph-arrow-right-bold"
+                :disabled="!base.trim() || !head.trim()"
+              >
+                {{ $t('local.picker.compare') }}
+              </ActionButton>
+            </form>
+          </div>
           <div class="flex flex-col gap-3">
             <h2 class="text-xs font-mono op-fade">
               {{ $t('local.picker.shortcuts') }}

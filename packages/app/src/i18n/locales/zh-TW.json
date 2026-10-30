@@ -444,6 +444,7 @@
       "head": "頭部",
       "compare": "比較",
       "shortcuts": "捷徑",
+      "repository": "目前儲存庫",
       "worktree": "未提交的變更",
       "recentCommits": "最近的提交",
       "branches": "分支",
