@@ -1,5 +1,6 @@
 import type { Server } from 'node:http'
 import type { Socket } from 'node:net'
+import type { CommitEvent } from './commits'
 import type { Worktree } from './schema'
 import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
 import { rm } from 'node:fs/promises'
@@ -37,6 +38,14 @@ async function fixture(port = 1) {
   const registry = { repos: vi.fn(async () => [{ path: '/repo' }]), add: vi.fn(async () => tree), addCurrent: vi.fn(async (): Promise<Worktree | undefined> => tree), find: vi.fn(async (_id: string): Promise<Worktree | undefined> => tree), remove: vi.fn() }
   const children = { get: vi.fn(async () => ({ port, token: 'server-only-token' })) }
   const log = vi.fn()
+  const listeners = new Set<(event: CommitEvent) => void>()
+  const commits = {
+    rescan: vi.fn(async () => {}),
+    subscribe: vi.fn((listener: (event: CommitEvent) => void) => {
+      listeners.add(listener)
+      return () => void listeners.delete(listener)
+    }),
+  }
   const root = mkdtempSync(join(tmpdir(), 'pulls-daemon-client-'))
   const client = join(root, 'client')
   mkdirSync(join(client, 'assets'), { recursive: true })
@@ -52,6 +61,7 @@ async function fixture(port = 1) {
     log,
     registry,
     children,
+    commits,
     connections: new Map<PassThrough, string>(),
   }
   const app = createDaemonApp(options)
@@ -63,12 +73,12 @@ async function fixture(port = 1) {
       ...init.headers,
     },
   }))
-  return { app, options, call, registry, children, log }
+  return { app, options, call, registry, children, commits, listeners, log }
 }
 
 it('protects every HTTP surface, exchanges launch links once and never logs credentials', async () => {
   const { call, log } = await fixture()
-  for (const path of ['/', '/sw.js', '/assets/shell.js', '/api/status', '/api/repos', '/r/main-123/', '/r/main-123/__connection.json'])
+  for (const path of ['/', '/sw.js', '/assets/shell.js', '/api/events', '/api/status', '/api/repos', '/r/main-123/', '/r/main-123/__connection.json'])
     expect((await call(path, {}, false)).status).toBe(401)
   expect((await call('/manifest.webmanifest', {}, false)).status).toBe(200)
   expect((await call('/', { headers: { host: 'evil.test' } })).status).toBe(403)
@@ -102,6 +112,21 @@ it('refuses launches outside a checkout and serves the tab shell with only its o
   expect((await call('/sw.js')).headers.get('content-type')).toMatch(/javascript/)
   for (const path of ['/assets/missing.js', '/assets/%2e%2e%2f%2e%2e%2fpulls-daemon-secret.txt', '/assets/..%2f..%2fpulls-daemon-secret.txt'])
     expect((await call(path)).status).toBe(404)
+})
+
+it('streams commits to each open shell until it goes away', async () => {
+  const { call, listeners } = await fixture()
+  const response = await call('/api/events')
+  expect(response.headers.get('content-type')).toBe('text/event-stream')
+  const reader = response.body!.getReader()
+  const read = async () => new TextDecoder().decode((await reader.read()).value)
+  expect(await read()).toBe(': connected\n\n')
+  const event = { id: 'main-123', repo: '/repo', branch: 'main', sha: 'abc', subject: 'Fix it' }
+  for (const listener of listeners)
+    listener(event)
+  expect(await read()).toBe(`data: ${JSON.stringify(event)}\n\n`)
+  await reader.cancel()
+  expect(listeners.size).toBe(0)
 })
 
 it('disconnects removed registrations without stopping their worktree servers or other tunnels', async () => {

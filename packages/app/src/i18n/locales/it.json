@@ -475,12 +475,16 @@
       "tabs": "Revisioni",
       "open": "Apri un worktree",
       "close": "Chiudi scheda",
+      "newCommit": "Nuovo commit",
       "empty": "Nessuna revisione aperta",
       "emptyHint": "Apri un worktree con + per rivederne le modifiche.",
       "offline": "pulls.review non è in esecuzione",
       "offlineHint": "Esegui {command} in un terminale. Questa pagina si riconnette da sola.",
       "signedOut": "Disconnesso",
-      "signedOutHint": "Esegui {command} in un repository per accedere di nuovo."
+      "signedOutHint": "Esegui {command} in un repository per accedere di nuovo.",
+      "notify": "Avvisami dei nuovi commit",
+      "notifyOff": "Interrompi le notifiche",
+      "notifyBlocked": "Le notifiche sono bloccate nelle impostazioni del browser"
     }
   }
 }

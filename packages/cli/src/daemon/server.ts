@@ -1,5 +1,6 @@
 import type { Duplex } from 'node:stream'
 import type { WorktreeServers } from './children'
+import type { CommitWatcher } from './commits'
 import type { AccessLog } from './proxy'
 import type { RepoRegistry } from './registry'
 import process from 'node:process'
@@ -19,11 +20,12 @@ export function createDaemonApp(options: {
   client: string
   registry: Pick<RepoRegistry, 'repos' | 'add' | 'addCurrent' | 'remove' | 'find'>
   children: Pick<WorktreeServers, 'get'>
+  commits: Pick<CommitWatcher, 'rescan' | 'subscribe'>
   connections: Map<Duplex, string>
   stop: () => void
   log: AccessLog
 }): H3 {
-  const { origin, session, registry, children, connections, stop, log } = options
+  const { origin, session, registry, children, commits, connections, stop, log } = options
   const launches = createLaunchTokens()
   const shell = createShellFiles(options.client)
   const app = new H3({
@@ -63,6 +65,32 @@ export function createDaemonApp(options: {
     return { stopping: true }
   })
   app.get('/api/repos', () => registry.repos())
+  // New commits in any registered worktree, for the shell's dots and notifications.
+  app.get('/api/events', () => {
+    const encoder = new TextEncoder()
+    let close = () => {}
+    const stream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        const send = (text: string) => {
+          try {
+            controller.enqueue(encoder.encode(text))
+          }
+          catch {
+            close()
+          }
+        }
+        const unsubscribe = commits.subscribe(event => send(`data: ${JSON.stringify(event)}\n\n`))
+        const ping = setInterval(send, 30_000, ': ping\n\n')
+        close = () => {
+          unsubscribe()
+          clearInterval(ping)
+        }
+        send(': connected\n\n')
+      },
+      cancel: () => close(),
+    })
+    return new Response(stream, { headers: { 'Content-Type': 'text/event-stream' } })
+  })
   app.get('/api/worktrees', async (event) => {
     const path = event.url.searchParams.get('path')
     if (!(await registry.repos()).some(repo => repo.path === path))
@@ -74,7 +102,9 @@ export function createDaemonApp(options: {
     if (!parsed.success)
       return new Response('A repository path is required', { status: 400 })
     try {
-      return await registry.add(parsed.output.path)
+      const tree = await registry.add(parsed.output.path)
+      void commits.rescan()
+      return tree
     }
     catch {
       return new Response('Cannot register this git repository', { status: 400 })
@@ -85,6 +115,7 @@ export function createDaemonApp(options: {
     if (!parsed.success)
       return new Response('A repository path is required', { status: 400 })
     await registry.remove(parsed.output.path)
+    void commits.rescan()
     for (const [socket, id] of connections) {
       if (!await registry.find(id))
         socket.destroy()
@@ -98,6 +129,7 @@ export function createDaemonApp(options: {
     const tree = await registry.addCurrent(parsed.output.path)
     if (!tree)
       return new Response('Not a git repository', { status: 422 })
+    void commits.rescan()
     const path = `/r/${tree.id}/`
     const token = launches.issue(path)
     return { url: `${origin}/login?token=${token}`, path }

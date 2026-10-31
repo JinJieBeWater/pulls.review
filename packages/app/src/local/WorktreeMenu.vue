@@ -12,6 +12,8 @@ import { addRepo, DaemonRequestError, readRepos, readWorktrees, removeRepo } fro
 const props = defineProps<{
   /** The open worktree: marked, and its repository can't be removed. */
   current?: string
+  /** Worktrees with something new, marked with a dot. */
+  dots?: ReadonlySet<string>
   /** Fixed width instead of the trigger's. */
   wide?: boolean
 }>()
@@ -173,6 +175,7 @@ const status = 'px-3 py-4 text-center text-sm op-mute'
               <span class="shrink-0 font-mono">{{ tree.branch ?? $t('local.repositories.detached') }}</span>
               <!-- The main worktree sits at the repository path its header already shows. -->
               <span class="min-w-0 flex-1 truncate text-xs op-mute">{{ tree.path === repo.path ? '' : tree.path }}</span>
+              <span v-if="dots?.has(tree.id)" class="h-2 w-2 shrink-0 rounded-full bg-primary-500" :aria-label="$t('local.shell.newCommit')" />
               <span v-if="tree.id === current" class="i-ph:check shrink-0 text-xs" aria-hidden="true" />
             </button>
           </section>
