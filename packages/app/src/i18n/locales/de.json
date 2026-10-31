@@ -464,6 +464,12 @@
       "failure": "Anfrage fehlgeschlagen. Führe pulls.review -d erneut aus, wenn deine Sitzung abgelaufen ist.",
       "requestFailed": "Anfrage fehlgeschlagen. Versuche es erneut.",
       "invalidPath": "Dieser Pfad kann nicht als Git-Repository registriert werden."
+    },
+    "notes": {
+      "add": "Notiz hinzufügen",
+      "placeholder": "Änderungswunsch an den Agenten…",
+      "copy": "{n} Notiz kopieren | {n} Notizen kopieren",
+      "copied": "Kopiert"
     }
   }
 }

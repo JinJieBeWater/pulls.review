@@ -3,7 +3,9 @@ import type { Driver } from 'unstorage'
 import type { LocalRpc } from './connection'
 import { LOCAL_RPC } from '@pulls.review/core/local-rpc'
 import { DiffsPayloadSchema } from '@pulls.review/core/types'
+import { createStorage } from 'unstorage'
 import * as v from 'valibot'
+import { withLocalNotes } from './notes'
 
 /** The server's cache directory as an unstorage driver: the browser's `CacheRepositories` run on it unchanged. */
 export function createRpcDriver(rpc: LocalRpc): Driver {
@@ -34,10 +36,12 @@ export function createRpcCredentials(rpc: LocalRpc, fallback: Credentials): Cred
 
 /** A local diff, run by the server's `git`. Its target may still be resolving (a branch's base). */
 export function createRpcSource(rpc: LocalRpc, pending: Promise<string>): DiffSource {
-  return {
+  return withLocalNotes(createStorage({ driver: createRpcDriver(rpc) }), {
     key: async () => v.parse(v.string(), await rpc.call(LOCAL_RPC.sourceKey, { target: await pending })),
     fetch: async () => v.parse(DiffsPayloadSchema, await rpc.call(LOCAL_RPC.sourceFetch, { target: await pending })),
     fingerprint: async () => v.parse(v.string(), await rpc.call(LOCAL_RPC.sourceFingerprint, { target: await pending })),
     loadFile: async (path, sha) => v.parse(v.optional(v.string()), await rpc.call(LOCAL_RPC.sourceLoadFile, { target: await pending, path, sha }) ?? undefined),
-  }
+  }, async (key, change) => {
+    await rpc.call(LOCAL_RPC.notesUpdate, { key, change })
+  })
 }

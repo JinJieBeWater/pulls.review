@@ -464,6 +464,12 @@
       "failure": "Permintaan gagal. Jalankan pulls.review -d lagi jika sesi Anda kedaluwarsa.",
       "requestFailed": "Permintaan gagal. Coba lagi.",
       "invalidPath": "Jalur ini tidak dapat didaftarkan sebagai repositori Git."
+    },
+    "notes": {
+      "add": "Tambah catatan",
+      "placeholder": "Permintaan perubahan untuk agen…",
+      "copy": "Salin {n} catatan",
+      "copied": "Disalin"
     }
   }
 }

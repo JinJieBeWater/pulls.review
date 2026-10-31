@@ -464,6 +464,12 @@
       "failure": "Richiesta non riuscita. Esegui di nuovo pulls.review -d se la sessione è scaduta.",
       "requestFailed": "Richiesta non riuscita. Riprova.",
       "invalidPath": "Impossibile registrare questo percorso come repository Git."
+    },
+    "notes": {
+      "add": "Aggiungi nota",
+      "placeholder": "Modifica da chiedere all'agente…",
+      "copy": "Copia {n} nota | Copia {n} note",
+      "copied": "Copiato"
     }
   }
 }

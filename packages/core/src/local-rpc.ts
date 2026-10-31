@@ -3,6 +3,7 @@ import type { AgentSessionRef, AnalyzeProgress, GroupedResult } from './types/an
 import * as v from 'valibot'
 import { LOCAL_AGENT_NAMES } from './analyze/adapters/llm/settings'
 import { AgentSessionRefSchema, AnalyzeProgressSchema, GroupedResultSchema } from './types/analyze'
+import { DiffSideSchema } from './types/comment-threads'
 
 /**
  * The contract between the `pulls.review` devframe server (`packages/cli`) and the
@@ -27,6 +28,8 @@ export const LOCAL_RPC = {
   storageSetItem: 'storage-set-item',
   storageRemoveItem: 'storage-remove-item',
   storageGetKeys: 'storage-get-keys',
+  /** Apply one note change to the latest worktree list on the server. */
+  notesUpdate: 'notes-update',
   githubToken: 'github-token',
   /** Analysis and chat through a local agent CLI (`plans/11-local-agents.md`). */
   agentList: 'agent-list',
@@ -34,6 +37,30 @@ export const LOCAL_RPC = {
   agentChat: 'agent-chat',
   agentAbort: 'agent-abort',
 } as const
+
+export const NoteSchema = v.object({
+  id: v.number(),
+  path: v.string(),
+  side: DiffSideSchema,
+  line: v.number(),
+  startLine: v.optional(v.number()),
+  startSide: v.optional(DiffSideSchema),
+  body: v.string(),
+  label: v.string(),
+  /** The selected diff lines when written, for copying and detecting moved anchors. */
+  code: v.optional(v.string()),
+  createdAt: v.string(),
+  sent: v.boolean(),
+})
+export type Note = v.InferOutput<typeof NoteSchema>
+
+export const NoteChangeSchema = v.variant('kind', [
+  v.object({ kind: v.literal('add'), note: v.omit(NoteSchema, ['id', 'sent']) }),
+  v.object({ kind: v.literal('edit'), id: v.number(), body: v.string() }),
+  v.object({ kind: v.literal('delete'), id: v.number() }),
+  v.object({ kind: v.literal('sent'), ids: v.array(v.number()) }),
+])
+export type NoteChange = v.InferOutput<typeof NoteChangeSchema>
 
 /** The streaming channel `agent-analyze` and `agent-chat` write to; devframe namespaces it too. */
 export const LOCAL_AGENT_CHANNEL = 'agent'

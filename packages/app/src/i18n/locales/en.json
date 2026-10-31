@@ -473,6 +473,12 @@
       "failure": "Request failed. Run pulls.review -d again if your session expired.",
       "requestFailed": "Request failed. Try again.",
       "invalidPath": "Cannot register this path as a Git repository."
+    },
+    "notes": {
+      "add": "Add note",
+      "placeholder": "Change request for the agent…",
+      "copy": "Copy {n} note | Copy {n} notes",
+      "copied": "Copied"
     }
   }
 }

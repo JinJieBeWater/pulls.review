@@ -464,6 +464,12 @@
       "failure": "請求失敗。如果工作階段已過期，請重新執行 pulls.review -d。",
       "requestFailed": "請求失敗，請重試。",
       "invalidPath": "無法將此路徑登記為 Git 儲存庫。"
+    },
+    "notes": {
+      "add": "新增批註",
+      "placeholder": "寫給 agent 的修改意見…",
+      "copy": "複製 {n} 則批註",
+      "copied": "已複製"
     }
   }
 }

@@ -1,11 +1,13 @@
 import type { Env } from '@pulls.review/core/env'
 import type { Driver } from 'unstorage'
 import { createLocalSource, readRepoInfo } from '@pulls.review/core/local'
-import { LOCAL_RPC } from '@pulls.review/core/local-rpc'
+import { LOCAL_RPC, NoteChangeSchema } from '@pulls.review/core/local-rpc'
 import { DiffsPayloadSchema } from '@pulls.review/core/types'
 import { defineRpcFunction } from 'devframe'
+import { createStorage } from 'unstorage'
 import * as v from 'valibot'
 import { resolveGithubToken } from './credentials'
+import { createNotesUpdater } from './daemon/notes'
 
 export interface LocalRpcOptions {
   /** Any directory inside the repository under review. */
@@ -23,6 +25,7 @@ const target = v.object({ target: v.string() })
  */
 export function localRpcFunctions({ cwd, driver, env }: LocalRpcOptions) {
   const source = (text: string) => createLocalSource({ cwd, target: text })
+  const updateNotes = createNotesUpdater(createStorage({ driver }))
   return [
     defineRpcFunction({ name: LOCAL_RPC.repoInfo, type: 'query', handler: () => readRepoInfo(cwd) }),
     defineRpcFunction({ name: LOCAL_RPC.sourceKey, type: 'query', args: [target], returns: v.string(), handler: ({ target }) => source(target).key() }),
@@ -34,6 +37,13 @@ export function localRpcFunctions({ cwd, driver, env }: LocalRpcOptions) {
       args: [v.object({ target: v.string(), path: v.string(), sha: v.string() })],
       returns: v.optional(v.string()),
       handler: ({ target, path, sha }) => source(target).loadFile(path, sha),
+    }),
+    defineRpcFunction({
+      name: LOCAL_RPC.notesUpdate,
+      type: 'action',
+      args: [v.object({ key: v.pipe(v.string(), v.startsWith('notes:')), change: NoteChangeSchema })],
+      returns: v.void(),
+      handler: ({ key, change }) => updateNotes(key, change),
     }),
     defineRpcFunction({
       name: LOCAL_RPC.storageGetItem,

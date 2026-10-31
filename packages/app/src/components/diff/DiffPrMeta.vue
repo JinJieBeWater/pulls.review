@@ -2,6 +2,7 @@
 import type { DiffsStore } from '../../stores/types'
 import DisplayDonut from '@antfu/design/components/Display/DisplayDonut.vue'
 import { computed, ref } from 'vue'
+import NotesCopyButton from '../../local/NotesCopyButton.vue'
 import DiffReviewButton from './DiffReviewButton.vue'
 import DiffStats from './DiffStats.vue'
 import ReviewProgressModal from './ReviewProgressModal.vue'
@@ -21,6 +22,8 @@ const deletions = computed(() => files.value.reduce((sum, file) => sum + file.de
 const progress = computed(() => totalFiles.value === 0 ? 1 : reviewedCount.value / totalFiles.value)
 
 const reviews = computed(() => props.store.reviews)
+// Fork (plans/fork/02): a local diff's review is a copy of its notes.
+const isLocal = computed(() => props.store.diff!.ref.kind === 'local')
 const reviewModalOpen = ref(false)
 const progressModalOpen = ref(false)
 </script>
@@ -38,14 +41,15 @@ const progressModalOpen = ref(false)
       <DisplayDonut :value="progress" :size="18" :thickness="3" />
       <span>{{ reviewedCount }} <span class="text-xs opacity-50">{{ $t('pr.reviewedOf', { total: totalFiles }) }}</span></span>
     </button>
+    <NotesCopyButton v-if="reviews && isLocal" :reviews="reviews" />
     <DiffReviewButton
-      v-if="reviews?.canWrite"
+      v-else-if="reviews?.canWrite"
       :pending-comment-count="reviews.pendingCommentCount"
       @review="reviewModalOpen = true"
     />
 
     <ReviewSubmitModal
-      v-if="reviews"
+      v-if="reviews && !isLocal"
       v-model:open="reviewModalOpen"
       :reviews="reviews"
       :author-login="store.diff?.author?.name"
