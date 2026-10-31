@@ -1,7 +1,11 @@
 import type { Server } from 'node:http'
 import type { Socket } from 'node:net'
 import type { Worktree } from './schema'
+import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
+import { rm } from 'node:fs/promises'
 import { createServer, request } from 'node:http'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { PassThrough } from 'node:stream'
 import { afterEach, expect, it, vi } from 'vitest'
 import { upgradeProxy } from './proxy'
@@ -33,9 +37,17 @@ async function fixture(port = 1) {
   const registry = { repos: vi.fn(async () => [{ path: '/repo' }]), add: vi.fn(async () => tree), addCurrent: vi.fn(async (): Promise<Worktree | undefined> => tree), find: vi.fn(async (_id: string): Promise<Worktree | undefined> => tree), remove: vi.fn() }
   const children = { get: vi.fn(async () => ({ port, token: 'server-only-token' })) }
   const log = vi.fn()
+  const root = mkdtempSync(join(tmpdir(), 'pulls-daemon-client-'))
+  const client = join(root, 'client')
+  mkdirSync(join(client, 'assets'), { recursive: true })
+  writeFileSync(join(client, 'shell.html'), '<title>shell</title>')
+  writeFileSync(join(client, 'assets', 'shell.js'), 'export {}')
+  writeFileSync(join(root, 'pulls-daemon-secret.txt'), 'secret')
+  cleanup.push(() => rm(root, { recursive: true, force: true }))
   const options = {
     origin: 'http://127.0.0.1:7855',
     session: secret(),
+    client,
     stop: vi.fn(),
     log,
     registry,
@@ -56,8 +68,9 @@ async function fixture(port = 1) {
 
 it('protects every HTTP surface, exchanges launch links once and never logs credentials', async () => {
   const { call, log } = await fixture()
-  for (const path of ['/', '/api/status', '/api/repos', '/r/main-123/', '/r/main-123/__connection.json'])
+  for (const path of ['/', '/sw.js', '/assets/shell.js', '/api/status', '/api/repos', '/r/main-123/', '/r/main-123/__connection.json'])
     expect((await call(path, {}, false)).status).toBe(401)
+  expect((await call('/manifest.webmanifest', {}, false)).status).toBe(200)
   expect((await call('/', { headers: { host: 'evil.test' } })).status).toBe(403)
   expect((await call('/', { headers: { origin: 'null' } })).status).toBe(403)
   expect((await call('/api/launch', { method: 'POST', body: '{}' })).status).toBe(403)
@@ -67,14 +80,14 @@ it('protects every HTTP surface, exchanges launch links once and never logs cred
   const loginPath = new URL(url).pathname + new URL(url).search
   const login = await call(loginPath, {}, false)
   expect(login.status).toBe(303)
-  expect(login.headers.get('location')).toBe('/r/main-123/')
+  expect(login.headers.get('location')).toBe('/?open=%2Fr%2Fmain-123%2F')
   expect(login.headers.get('set-cookie')).toMatch(/; HttpOnly; SameSite=Strict; Path=\/; Max-Age=31536000$/)
   expect(login.headers.get('referrer-policy')).toBe('no-referrer')
   expect((await call(loginPath, {}, false)).status).toBe(401)
   expect(JSON.stringify(log.mock.calls)).not.toContain(new URL(url).searchParams.get('token'))
 })
 
-it('refuses launches outside a checkout and sends a bare root to the last opened worktree', async () => {
+it('refuses launches outside a checkout and serves the tab shell with only its own files', async () => {
   const { call, options, registry } = await fixture()
   registry.addCurrent.mockResolvedValueOnce(undefined)
   const request = { method: 'POST', headers: { origin: options.origin }, body: JSON.stringify({ path: '/not-a-repo' }) }
@@ -82,15 +95,13 @@ it('refuses launches outside a checkout and sends a bare root to the last opened
   registry.add.mockRejectedValueOnce(new Error('Not a git repository'))
   expect((await call('/api/repos', request)).status).toBe(400)
 
-  const root = await call('/')
-  expect(root.status).toBe(200)
-  expect(await root.text()).toContain('pulls.review -d')
-  await call('/r/main-123/')
-  const back = await call('/')
-  expect(back.status).toBe(302)
-  expect(back.headers.get('location')).toBe(`${options.origin}/r/main-123/`)
-  registry.find.mockResolvedValueOnce(undefined)
-  expect((await call('/')).status).toBe(200)
+  expect(await (await call('/')).text()).toBe('<title>shell</title>')
+  const asset = await call('/assets/shell.js')
+  expect(asset.headers.get('content-type')).toMatch(/javascript/)
+  expect(await asset.text()).toBe('export {}')
+  expect((await call('/sw.js')).headers.get('content-type')).toMatch(/javascript/)
+  for (const path of ['/assets/missing.js', '/assets/%2e%2e%2f%2e%2e%2fpulls-daemon-secret.txt', '/assets/..%2f..%2fpulls-daemon-secret.txt'])
+    expect((await call(path)).status).toBe(404)
 })
 
 it('disconnects removed registrations without stopping their worktree servers or other tunnels', async () => {

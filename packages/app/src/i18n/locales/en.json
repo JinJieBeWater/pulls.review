@@ -479,6 +479,17 @@
       "placeholder": "Change request for the agent…",
       "copy": "Copy {n} note | Copy {n} notes",
       "copied": "Copied"
+    },
+    "shell": {
+      "tabs": "Reviews",
+      "open": "Open a worktree",
+      "close": "Close tab",
+      "empty": "No reviews open",
+      "emptyHint": "Open a worktree with + to review its changes.",
+      "offline": "pulls.review is not running",
+      "offlineHint": "Run {command} in a terminal. This page reconnects by itself.",
+      "signedOut": "Signed out",
+      "signedOutHint": "Run {command} in a repository to sign in again."
     }
   }
 }

@@ -8,12 +8,15 @@ import * as v from 'valibot'
 import { routeId } from './proxy'
 import { worktrees } from './registry'
 import { COOKIE, createLaunchTokens, hasSession, requestGuard } from './security'
+import { createShellFiles, MANIFEST, SERVICE_WORKER } from './shell'
 
 const pathSchema = v.object({ path: v.pipe(v.string(), v.minLength(1), v.maxLength(4096)) })
 
 export function createDaemonApp(options: {
   origin: string
   session: string
+  /** The built client: the shell page and its assets. */
+  client: string
   registry: Pick<RepoRegistry, 'repos' | 'add' | 'addCurrent' | 'remove' | 'find'>
   children: Pick<WorktreeServers, 'get'>
   connections: Map<Duplex, string>
@@ -22,8 +25,7 @@ export function createDaemonApp(options: {
 }): H3 {
   const { origin, session, registry, children, connections, stop, log } = options
   const launches = createLaunchTokens()
-  /** The worktree whose page was opened last, for a bare `/`. */
-  let lastOpened: string | undefined
+  const shell = createShellFiles(options.client)
   const app = new H3({
     onError: error => new Response('Daemon request failed', { status: error.status }),
     onResponse(response, event) {
@@ -44,9 +46,12 @@ export function createDaemonApp(options: {
       return new Response(null, {
         status: 303,
         // A year: the session secret survives restarts (`loadSession`), so an installed app stays signed in.
-        headers: { 'Set-Cookie': `${COOKIE}=${session}; HttpOnly; SameSite=Strict; Path=/; Max-Age=31536000`, 'Location': path },
+        headers: { 'Set-Cookie': `${COOKIE}=${session}; HttpOnly; SameSite=Strict; Path=/; Max-Age=31536000`, 'Location': `/?open=${encodeURIComponent(path)}` },
       })
     }
+    // Fetched without the cookie by the browser's install check.
+    if (event.url.pathname === '/manifest.webmanifest' && event.req.method === 'GET')
+      return new Response(MANIFEST, { headers: { 'Content-Type': 'application/manifest+json' } })
     if (!hasSession(event.req.headers, session))
       return new Response('Run pulls.review -d to sign in', { status: 401 })
     return next()
@@ -97,16 +102,16 @@ export function createDaemonApp(options: {
     const token = launches.issue(path)
     return { url: `${origin}/login?token=${token}`, path }
   })
-  // Repositories are switched from each review page; a bare `/` returns to the last one.
-  app.get('/', async () => lastOpened && await registry.find(lastOpened)
-    ? Response.redirect(`${origin}/r/${lastOpened}/`, 302)
-    : new Response('Run pulls.review -d in a git repository to open it.', { headers: { 'Content-Type': 'text/plain; charset=utf-8' } }))
+  // The tab shell (plans/fork/02); each tab is a review under `/r/<id>/`.
+  app.get('/', () => shell.page())
+  app.get('/sw.js', () => new Response(SERVICE_WORKER, { headers: { 'Content-Type': 'text/javascript; charset=utf-8' } }))
+  app.get('/assets/**', event => shell.serve(event))
+  app.get('/favicon.svg', event => shell.serve(event))
   app.all('/r/**', async (event) => {
     const id = routeId(event.url.pathname)
     const tree = id ? await registry.find(id) : undefined
     if (!tree)
       return new Response('Worktree not registered', { status: 404 })
-    lastOpened = tree.id
     const target = await children.get(tree)
     const childOrigin = `http://127.0.0.1:${target.port}`
     try {

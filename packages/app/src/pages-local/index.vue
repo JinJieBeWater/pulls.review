@@ -15,6 +15,7 @@ import { useDocumentTitle } from '../composables/useDocumentTitle'
 import { localRpcKey } from '../local/local-rpc-key'
 import { readRepoInfo, routeForPage } from '../local/pages'
 import RepositorySwitcher from '../local/RepositorySwitcher.vue'
+import { inShell } from '../local/shell/in-shell'
 import { routeFromGithubUrl } from '../source-routes'
 
 /** Branches listed; the rest stay reachable by typing them. */
@@ -67,7 +68,7 @@ useDocumentTitle(() => t('local.picker.title'))
 
 <template>
   <div class="relative min-h-screen flex flex-col">
-    <AppHeader />
+    <AppHeader v-if="!inShell" />
 
     <main class="mxa max-w-6xl w-full flex flex-1 flex-col px-6 py-16 sm:py-20">
       <section class="grid items-start gap-12 lg:grid-cols-[minmax(0,1fr)_minmax(0,30rem)] lg:gap-16">

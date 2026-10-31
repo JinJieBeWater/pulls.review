@@ -470,6 +470,17 @@
       "placeholder": "Permintaan perubahan untuk agen…",
       "copy": "Salin {n} catatan",
       "copied": "Disalin"
+    },
+    "shell": {
+      "tabs": "Ulasan",
+      "open": "Buka worktree",
+      "close": "Tutup tab",
+      "empty": "Tidak ada ulasan yang terbuka",
+      "emptyHint": "Buka worktree dengan + untuk mengulas perubahannya.",
+      "offline": "pulls.review tidak berjalan",
+      "offlineHint": "Jalankan {command} di terminal. Halaman ini tersambung kembali dengan sendirinya.",
+      "signedOut": "Sudah keluar",
+      "signedOutHint": "Jalankan {command} di sebuah repositori untuk masuk lagi."
     }
   }
 }

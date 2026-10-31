@@ -470,6 +470,17 @@
       "placeholder": "에이전트에게 보낼 수정 요청…",
       "copy": "메모 {n}개 복사",
       "copied": "복사됨"
+    },
+    "shell": {
+      "tabs": "리뷰",
+      "open": "워크트리 열기",
+      "close": "탭 닫기",
+      "empty": "열린 리뷰가 없습니다",
+      "emptyHint": "+로 워크트리를 열어 변경 사항을 리뷰하세요.",
+      "offline": "pulls.review가 실행 중이 아닙니다",
+      "offlineHint": "터미널에서 {command}를 실행하세요. 실행되면 이 페이지가 자동으로 다시 연결됩니다.",
+      "signedOut": "로그아웃됨",
+      "signedOutHint": "저장소에서 {command}를 실행해 다시 로그인하세요."
     }
   }
 }

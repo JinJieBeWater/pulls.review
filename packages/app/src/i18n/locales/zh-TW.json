@@ -470,6 +470,17 @@
       "placeholder": "寫給 agent 的修改意見…",
       "copy": "複製 {n} 則批註",
       "copied": "已複製"
+    },
+    "shell": {
+      "tabs": "審查",
+      "open": "開啟工作樹",
+      "close": "關閉分頁",
+      "empty": "沒有開啟的審查",
+      "emptyHint": "按 + 開啟一個工作樹，審查它的變更。",
+      "offline": "pulls.review 沒有執行",
+      "offlineHint": "在終端機執行 {command}。啟動後本頁會自動重新連線。",
+      "signedOut": "已登出",
+      "signedOutHint": "在任一儲存庫中執行 {command} 重新登入。"
     }
   }
 }

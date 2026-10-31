@@ -4,6 +4,7 @@ import { rm } from 'node:fs/promises'
 import { createServer } from 'node:http'
 import { join } from 'node:path'
 import process from 'node:process'
+import { fileURLToPath } from 'node:url'
 import { toNodeHandler } from 'h3/node'
 import * as v from 'valibot'
 import { createWorktreeServers } from './children'
@@ -28,6 +29,7 @@ process.once('message', async (message: unknown) => {
     const app = createDaemonApp({
       origin,
       session,
+      client: fileURLToPath(new URL('./client', import.meta.url)),
       registry,
       children,
       connections,

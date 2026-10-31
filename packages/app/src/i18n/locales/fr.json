@@ -470,6 +470,17 @@
       "placeholder": "Modification à demander à l'agent…",
       "copy": "Copier {n} note | Copier {n} notes",
       "copied": "Copié"
+    },
+    "shell": {
+      "tabs": "Revues",
+      "open": "Ouvrir un worktree",
+      "close": "Fermer l'onglet",
+      "empty": "Aucune revue ouverte",
+      "emptyHint": "Ouvrez un worktree avec + pour relire ses modifications.",
+      "offline": "pulls.review n'est pas lancé",
+      "offlineHint": "Lancez {command} dans un terminal. Cette page se reconnecte d'elle-même.",
+      "signedOut": "Déconnecté",
+      "signedOutHint": "Lancez {command} dans un dépôt pour vous reconnecter."
     }
   }
 }

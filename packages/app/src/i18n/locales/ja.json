@@ -470,6 +470,17 @@
       "placeholder": "エージェントへの修正依頼…",
       "copy": "{n} 件のメモをコピー",
       "copied": "コピーしました"
+    },
+    "shell": {
+      "tabs": "レビュー",
+      "open": "ワークツリーを開く",
+      "close": "タブを閉じる",
+      "empty": "開いているレビューはありません",
+      "emptyHint": "+ からワークツリーを開いて変更をレビューします。",
+      "offline": "pulls.review が起動していません",
+      "offlineHint": "ターミナルで {command} を実行してください。起動すると自動で再接続します。",
+      "signedOut": "サインアウトしました",
+      "signedOutHint": "リポジトリで {command} を実行すると再度サインインします。"
     }
   }
 }
