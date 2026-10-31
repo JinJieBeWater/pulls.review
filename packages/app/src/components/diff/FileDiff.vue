@@ -242,7 +242,7 @@ async function submitDraft(body: string, mode: 'single' | 'review') {
   draftError.value = undefined
   try {
     await r.addComment(target, body, mode)
-    draftTarget.value = undefined
+    closeDraft()
   }
   catch (err) {
     draftError.value = err instanceof Error ? err.message : String(err)
@@ -268,6 +268,14 @@ function askAboutSelection() {
   if (!chatDraft.quotes.some(other => other.label === quote.label))
     chatDraft.quotes.push(quote)
   chatDraft.open = true
+  instance?.setSelectedLines(null)
+  selectedRange.value = undefined
+}
+
+// The gutter click leaves its lines selected, and pierre pins the "+" to a selection:
+// clear both with the draft, or the button sticks to that line.
+function closeDraft() {
+  draftTarget.value = undefined
   instance?.setSelectedLines(null)
   selectedRange.value = undefined
 }
@@ -498,7 +506,7 @@ defineExpose({
             :busy="draftBusy"
             :error="draftError"
             @submit="submitDraft($event, 'review')"
-            @cancel="draftTarget = undefined"
+            @cancel="closeDraft"
           />
           <CommentComposer
             v-else
@@ -506,7 +514,7 @@ defineExpose({
             :busy="draftBusy"
             :error="draftError"
             @submit="submitDraft"
-            @cancel="draftTarget = undefined"
+            @cancel="closeDraft"
           />
         </div>
       </div>
