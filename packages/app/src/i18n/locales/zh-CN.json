@@ -475,12 +475,16 @@
       "tabs": "评审",
       "open": "打开工作树",
       "close": "关闭标签页",
+      "newCommit": "有新提交",
       "empty": "没有打开的评审",
       "emptyHint": "点 + 打开一个工作树，评审它的改动。",
       "offline": "pulls.review 没有运行",
       "offlineHint": "在终端运行 {command}。启动后本页会自动重连。",
       "signedOut": "已退出登录",
-      "signedOutHint": "在任一仓库里运行 {command} 重新登录。"
+      "signedOutHint": "在任一仓库里运行 {command} 重新登录。",
+      "notify": "有新提交时通知我",
+      "notifyOff": "关闭通知",
+      "notifyBlocked": "浏览器设置里禁止了通知"
     }
   }
 }

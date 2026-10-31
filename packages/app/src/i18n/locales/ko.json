@@ -475,12 +475,16 @@
       "tabs": "리뷰",
       "open": "워크트리 열기",
       "close": "탭 닫기",
+      "newCommit": "새 커밋",
       "empty": "열린 리뷰가 없습니다",
       "emptyHint": "+로 워크트리를 열어 변경 사항을 리뷰하세요.",
       "offline": "pulls.review가 실행 중이 아닙니다",
       "offlineHint": "터미널에서 {command}를 실행하세요. 실행되면 이 페이지가 자동으로 다시 연결됩니다.",
       "signedOut": "로그아웃됨",
-      "signedOutHint": "저장소에서 {command}를 실행해 다시 로그인하세요."
+      "signedOutHint": "저장소에서 {command}를 실행해 다시 로그인하세요.",
+      "notify": "새 커밋 알림 받기",
+      "notifyOff": "알림 끄기",
+      "notifyBlocked": "브라우저 설정에서 알림이 차단되어 있습니다"
     }
   }
 }

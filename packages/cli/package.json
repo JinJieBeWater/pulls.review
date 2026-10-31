@@ -42,6 +42,7 @@
   },
   "dependencies": {
     "@pulls.review/core": "workspace:^",
+    "chokidar": "catalog:build",
     "devframe": "catalog:frontend",
     "h3": "catalog:frontend",
     "unstorage": "catalog:frontend",

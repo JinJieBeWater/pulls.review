@@ -475,12 +475,16 @@
       "tabs": "Ulasan",
       "open": "Buka worktree",
       "close": "Tutup tab",
+      "newCommit": "Commit baru",
       "empty": "Tidak ada ulasan yang terbuka",
       "emptyHint": "Buka worktree dengan + untuk mengulas perubahannya.",
       "offline": "pulls.review tidak berjalan",
       "offlineHint": "Jalankan {command} di terminal. Halaman ini tersambung kembali dengan sendirinya.",
       "signedOut": "Sudah keluar",
-      "signedOutHint": "Jalankan {command} di sebuah repositori untuk masuk lagi."
+      "signedOutHint": "Jalankan {command} di sebuah repositori untuk masuk lagi.",
+      "notify": "Beri tahu saya ada commit baru",
+      "notifyOff": "Hentikan notifikasi",
+      "notifyBlocked": "Notifikasi diblokir di pengaturan browser"
     }
   }
 }

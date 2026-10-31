@@ -591,6 +591,9 @@ importers:
       '@pulls.review/core':
         specifier: workspace:^
         version: link:../core
+      chokidar:
+        specifier: ^6.0.0
+        version: 6.0.0
       devframe:
         specifier: catalog:frontend
         version: 1.2.6(@devframes/agentic@1.2.5)(cac@7.1.0)(srvx@1.0.6)

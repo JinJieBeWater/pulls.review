@@ -475,12 +475,16 @@
       "tabs": "レビュー",
       "open": "ワークツリーを開く",
       "close": "タブを閉じる",
+      "newCommit": "新しいコミット",
       "empty": "開いているレビューはありません",
       "emptyHint": "+ からワークツリーを開いて変更をレビューします。",
       "offline": "pulls.review が起動していません",
       "offlineHint": "ターミナルで {command} を実行してください。起動すると自動で再接続します。",
       "signedOut": "サインアウトしました",
-      "signedOutHint": "リポジトリで {command} を実行すると再度サインインします。"
+      "signedOutHint": "リポジトリで {command} を実行すると再度サインインします。",
+      "notify": "新しいコミットを通知",
+      "notifyOff": "通知を止める",
+      "notifyBlocked": "ブラウザの設定で通知がブロックされています"
     }
   }
 }

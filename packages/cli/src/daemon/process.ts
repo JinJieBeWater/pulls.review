@@ -8,6 +8,7 @@ import { fileURLToPath } from 'node:url'
 import { toNodeHandler } from 'h3/node'
 import * as v from 'valibot'
 import { createWorktreeServers } from './children'
+import { watchCommits } from './commits'
 import { upgradeProxy } from './proxy'
 import { atomicWrite, createRepoRegistry } from './registry'
 import { DaemonStartSchema } from './schema'
@@ -22,6 +23,8 @@ process.once('message', async (message: unknown) => {
     const session = await loadSession()
     const origin = daemonOrigin(port)
     const registry = createRepoRegistry(join(stateDir(), 'repos.json'))
+    const commits = watchCommits(registry)
+    void commits.rescan()
     const sockets = new Set<Socket>()
     const connections = new Map<Duplex, string>()
     let stopping = false
@@ -32,6 +35,7 @@ process.once('message', async (message: unknown) => {
       client: fileURLToPath(new URL('./client', import.meta.url)),
       registry,
       children,
+      commits,
       connections,
       stop: () => { void stop() },
       log,
@@ -44,7 +48,7 @@ process.once('message', async (message: unknown) => {
       server.close()
       for (const socket of sockets)
         socket.destroy()
-      await children.close()
+      await Promise.all([children.close(), commits.close()])
       if ((await readState())?.pid === process.pid)
         await rm(pidFile(), { force: true })
       process.exit()

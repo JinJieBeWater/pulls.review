@@ -7,7 +7,8 @@ import FeedbackEmptyState from '@antfu/design/components/Feedback/FeedbackEmptyS
 import { useEventListener, useLocalStorage, useTitle } from '@vueuse/core'
 import { TabsList, TabsRoot, TabsTrigger } from 'reka-ui'
 import * as v from 'valibot'
-import { computed, nextTick, onMounted, reactive, ref } from 'vue'
+import { computed, nextTick, onMounted, onScopeDispose, reactive, ref } from 'vue'
+import { useI18n } from 'vue-i18n'
 import DarkToggle from '../../components/DarkToggle.vue'
 import LanguageMenu from '../../components/LanguageMenu.vue'
 import { DaemonRequestError, readRepos, readWorktrees } from '../daemon'
@@ -29,15 +30,20 @@ const sources = reactive(new Map<number, string>())
 const titles = reactive(new Map<number, string>())
 const frames = new Map<number, Window>()
 const worktrees = ref(new Map<string, { repo: string, tree: DaemonWorktree }>())
+/** Worktrees with a commit not seen yet. */
+const dots = reactive(new Set<string>())
 const connection = ref<'online' | 'offline' | 'signed-out'>('online')
+const { t } = useI18n()
 
 const active = computed(() => state.value.tabs.find(tab => tab.key === state.value.active))
 useTitle(() => active.value ? `${titles.get(active.value.key) ?? label(active.value.url)} · pulls.review` : 'pulls.review')
 
 function select(key: number | undefined) {
-  if (!state.value.tabs.some(tab => tab.key === key))
+  const tab = state.value.tabs.find(tab => tab.key === key)
+  if (!tab)
     return
   state.value = { ...state.value, active: key }
+  dots.delete(worktreeOf(tab.url)!)
 }
 
 function show(next: Tabs) {
@@ -115,6 +121,59 @@ async function waitForDaemon() {
   }
 }
 
+// --- New commits (the daemon's `/api/events`) ---
+
+const notify = useLocalStorage('pulls.review:notify', false)
+const permission = ref(typeof Notification === 'undefined' ? 'denied' : Notification.permission)
+const notifyLabel = computed(() => t(permission.value === 'denied' ? 'local.shell.notifyBlocked' : notify.value ? 'local.shell.notifyOff' : 'local.shell.notify'))
+
+async function toggleNotify() {
+  if (notify.value) {
+    notify.value = false
+    return
+  }
+  permission.value = await Notification.requestPermission()
+  notify.value = permission.value === 'granted'
+}
+
+const CommitSchema = v.object({ id: v.string(), repo: v.string(), branch: v.optional(v.string()), sha: v.string(), subject: v.string() })
+
+function onCommit(raw: string) {
+  const parsed = v.safeParse(CommitSchema, JSON.parse(raw))
+  if (!parsed.success)
+    return
+  const commit = parsed.output
+  const url = `/r/${commit.id}/`
+  dots.add(commit.id)
+  // Keep the dot, but avoid a system notification for the focused active tab.
+  if (active.value && worktreeOf(active.value.url) === commit.id && document.hasFocus())
+    return
+  if (!notify.value || permission.value !== 'granted')
+    return
+  const where = `${commit.repo.split('/').pop()}${commit.branch ? ` · ${commit.branch}` : ''}`
+  const notification = new Notification(where, { body: commit.subject, tag: commit.id, icon: '/favicon.svg' })
+  notification.onclick = () => {
+    window.focus()
+    show(showWorktree(state.value, url))
+    notification.close()
+  }
+}
+
+let events: EventSource | undefined
+function listen() {
+  events = new EventSource('/api/events')
+  events.onmessage = event => onCommit(event.data)
+  // EventSource retries by itself; a daemon that went away gets the offline page instead.
+  events.onerror = async () => {
+    if (await fetch('/api/status').then(response => response.ok, () => false))
+      return
+    events?.close()
+    connection.value = 'offline'
+    void waitForDaemon()
+  }
+}
+onScopeDispose(() => events?.close())
+
 // --- Frames ---
 
 const SUFFIX = ' · pulls.review'
@@ -164,6 +223,8 @@ onMounted(async () => {
       show(showWorktree(state.value, open))
   }
   await loadWorktrees()
+  if (connection.value === 'online')
+    listen()
   void waitForDaemon()
 })
 
@@ -188,6 +249,7 @@ const model = computed({
               :title="`${label(tab.url)}: ${titles.get(tab.key) ?? tab.url}${index < 9 ? ` (⌘${index + 1})` : ''}`"
               @keydown.delete.prevent="closeFromKeyboard(tab.key)"
             >
+              <span v-if="dots.has(worktreeOf(tab.url)!)" class="h-2 w-2 shrink-0 rounded-full bg-primary-500" :aria-label="$t('local.shell.newCommit')" />
               <span class="shrink-0 font-mono">{{ where(tab.url)?.repo ?? worktreeOf(tab.url) }}</span>
               <span v-if="where(tab.url)" class="min-w-0 truncate color-muted font-mono">{{ where(tab.url)!.branch }}</span>
             </TabsTrigger>
@@ -203,11 +265,19 @@ const model = computed({
           </div>
         </TabsList>
       </TabsRoot>
-      <WorktreeMenu v-if="connection === 'online'" wide @pick="pick">
+      <WorktreeMenu v-if="connection === 'online'" wide :dots="dots" @pick="pick">
         <ActionIconButton compact icon="i-ph:plus" :label="$t('local.shell.open')" :tooltip="$t('local.shell.open')" />
       </WorktreeMenu>
       <div class="flex-1" />
       <div class="flex shrink-0 items-center gap-1">
+        <ActionIconButton
+          v-if="connection === 'online'"
+          :icon="notify && permission === 'granted' ? 'i-ph:bell-ringing-duotone' : 'i-ph:bell-slash'"
+          :label="notifyLabel"
+          :tooltip="notifyLabel"
+          :disabled="permission === 'denied'"
+          @click="toggleNotify"
+        />
         <ActionIconButton
           href="https://github.com/antfu/pulls.review"
           target="_blank"

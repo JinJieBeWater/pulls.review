@@ -484,12 +484,16 @@
       "tabs": "Reviews",
       "open": "Open a worktree",
       "close": "Close tab",
+      "newCommit": "New commit",
       "empty": "No reviews open",
       "emptyHint": "Open a worktree with + to review its changes.",
       "offline": "pulls.review is not running",
       "offlineHint": "Run {command} in a terminal. This page reconnects by itself.",
       "signedOut": "Signed out",
-      "signedOutHint": "Run {command} in a repository to sign in again."
+      "signedOutHint": "Run {command} in a repository to sign in again.",
+      "notify": "Notify me of new commits",
+      "notifyOff": "Stop notifications",
+      "notifyBlocked": "Notifications are blocked in the browser settings"
     }
   }
 }
