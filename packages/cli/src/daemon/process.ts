@@ -10,16 +10,15 @@ import { createWorktreeServers } from './children'
 import { upgradeProxy } from './proxy'
 import { atomicWrite, createRepoRegistry } from './registry'
 import { DaemonStartSchema } from './schema'
-import { secret } from './security'
 import { createDaemonApp } from './server'
-import { daemonOrigin, pidFile, readState, stateDir } from './state'
+import { daemonOrigin, loadSession, pidFile, readState, stateDir } from './state'
 
 process.umask(0o077)
 process.once('message', async (message: unknown) => {
   const children = createWorktreeServers()
   try {
     const { port } = v.parse(DaemonStartSchema, message)
-    const session = secret()
+    const session = await loadSession()
     const origin = daemonOrigin(port)
     const registry = createRepoRegistry(join(stateDir(), 'repos.json'))
     const sockets = new Set<Socket>()
@@ -44,7 +43,7 @@ process.once('message', async (message: unknown) => {
       for (const socket of sockets)
         socket.destroy()
       await children.close()
-      if ((await readState())?.session === session)
+      if ((await readState())?.pid === process.pid)
         await rm(pidFile(), { force: true })
       process.exit()
     }

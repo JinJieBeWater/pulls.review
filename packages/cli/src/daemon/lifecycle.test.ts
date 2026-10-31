@@ -94,6 +94,11 @@ it.runIf(process.env.PULLS_DAEMON_SMOKE === '1')('starts built workers, reuses t
     expect((await run(['--stop', '--port', String(port)])).stdout).toContain('daemon stopped')
     await vi.waitFor(() => expect(pids.filter(alive)).toEqual([]), { timeout: 5_000 })
     await expect(stat(pidFile)).rejects.toMatchObject({ code: 'ENOENT' })
+
+    // The sign-in survives a restart.
+    await run(['-d', '--no-open', '--port', String(port)])
+    state = v.parse(DaemonStateSchema, JSON.parse(await readFile(pidFile, 'utf8')))
+    expect((await fetch(origin + mainPath, { headers: { cookie }, signal: AbortSignal.timeout(30_000) })).status).toBe(200)
   }
   finally {
     if (state) {

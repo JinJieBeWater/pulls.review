@@ -1,7 +1,7 @@
 import * as v from 'valibot'
 
 export const PortSchema = v.pipe(v.number(), v.integer(), v.minValue(1), v.maxValue(65535))
-const SecretSchema = v.pipe(v.string(), v.regex(/^[a-f0-9]{64}$/))
+export const SecretSchema = v.pipe(v.string(), v.regex(/^[a-f0-9]{64}$/))
 
 export const RepoSchema = v.object({ path: v.string() })
 export type Repo = v.InferOutput<typeof RepoSchema>

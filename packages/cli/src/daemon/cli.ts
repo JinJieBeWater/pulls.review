@@ -123,7 +123,7 @@ async function stop(state: DaemonState | undefined, port: number): Promise<void>
     throw new Error('Could not stop daemon')
   for (let attempt = 0; attempt < 100; attempt++) {
     // The listener closes before child cleanup finishes.
-    if (!await occupied(port) && (await readState())?.session !== state.session) {
+    if (!await occupied(port) && (await readState())?.pid !== state.pid) {
       process.stdout.write('pulls.review daemon stopped\n')
       return
     }
