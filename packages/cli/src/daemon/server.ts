@@ -43,7 +43,8 @@ export function createDaemonApp(options: {
         return new Response('Invalid or expired launch token', { status: 401 })
       return new Response(null, {
         status: 303,
-        headers: { 'Set-Cookie': `${COOKIE}=${session}; HttpOnly; SameSite=Strict; Path=/`, 'Location': path },
+        // A year: the session secret survives restarts (`loadSession`), so an installed app stays signed in.
+        headers: { 'Set-Cookie': `${COOKIE}=${session}; HttpOnly; SameSite=Strict; Path=/; Max-Age=31536000`, 'Location': path },
       })
     }
     if (!hasSession(event.req.headers, session))

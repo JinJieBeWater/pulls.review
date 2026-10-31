@@ -68,7 +68,7 @@ it('protects every HTTP surface, exchanges launch links once and never logs cred
   const login = await call(loginPath, {}, false)
   expect(login.status).toBe(303)
   expect(login.headers.get('location')).toBe('/r/main-123/')
-  expect(login.headers.get('set-cookie')).toMatch(/; HttpOnly; SameSite=Strict; Path=\/$/)
+  expect(login.headers.get('set-cookie')).toMatch(/; HttpOnly; SameSite=Strict; Path=\/; Max-Age=31536000$/)
   expect(login.headers.get('referrer-policy')).toBe('no-referrer')
   expect((await call(loginPath, {}, false)).status).toBe(401)
   expect(JSON.stringify(log.mock.calls)).not.toContain(new URL(url).searchParams.get('token'))
