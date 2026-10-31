@@ -36,5 +36,7 @@ export default defineConfig({
   build: {
     outDir: fileURLToPath(new URL('../cli/dist/client', import.meta.url)),
     emptyOutDir: true,
+    // Fork (plans/fork/02): the daemon's tab shell at `/`.
+    rolldownOptions: { input: { index: fileURLToPath(new URL('index.html', import.meta.url)), shell: fileURLToPath(new URL('shell.html', import.meta.url)) } },
   },
 })

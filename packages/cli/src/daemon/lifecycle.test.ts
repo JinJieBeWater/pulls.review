@@ -78,7 +78,10 @@ it.runIf(process.env.PULLS_DAEMON_SMOKE === '1')('starts built workers, reuses t
     const cookie = redirect.headers.get('set-cookie')?.split(';')[0]
     if (!cookie)
       throw new Error('Missing session cookie')
-    const mainPath = redirect.headers.get('location')!
+    // Signed in, the browser lands on the tab shell, which opens this worktree.
+    const landing = new URL(redirect.headers.get('location')!, origin)
+    expect(landing.pathname).toBe('/')
+    const mainPath = landing.searchParams.get('open')!
     const second = await run(['-d', '--no-open', '--port', String(port)], linked)
     expect(v.parse(DaemonStateSchema, JSON.parse(await readFile(pidFile, 'utf8')))).toEqual(state)
     expect(JSON.parse(await readFile(join(home, '.pulls.review', 'repos.json'), 'utf8'))).toEqual({ repos: [{ path: main }] })

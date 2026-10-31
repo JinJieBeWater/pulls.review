@@ -470,6 +470,17 @@
       "placeholder": "Cambio que pedir al agente…",
       "copy": "Copiar {n} nota | Copiar {n} notas",
       "copied": "Copiado"
+    },
+    "shell": {
+      "tabs": "Revisiones",
+      "open": "Abrir un worktree",
+      "close": "Cerrar pestaña",
+      "empty": "No hay revisiones abiertas",
+      "emptyHint": "Abre un worktree con + para revisar sus cambios.",
+      "offline": "pulls.review no se está ejecutando",
+      "offlineHint": "Ejecuta {command} en una terminal. Esta página se reconecta sola.",
+      "signedOut": "Sesión cerrada",
+      "signedOutHint": "Ejecuta {command} en un repositorio para volver a iniciar sesión."
     }
   }
 }
