@@ -464,6 +464,12 @@
       "failure": "La solicitud falló. Ejecuta pulls.review -d de nuevo si tu sesión ha caducado.",
       "requestFailed": "La solicitud falló. Inténtalo de nuevo.",
       "invalidPath": "No se puede registrar esta ruta como repositorio Git."
+    },
+    "notes": {
+      "add": "Añadir nota",
+      "placeholder": "Cambio que pedir al agente…",
+      "copy": "Copiar {n} nota | Copiar {n} notas",
+      "copied": "Copiado"
     }
   }
 }

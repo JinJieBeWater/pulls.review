@@ -464,6 +464,12 @@
       "failure": "请求失败。如果会话已过期，请重新运行 pulls.review -d。",
       "requestFailed": "请求失败，请重试。",
       "invalidPath": "无法将此路径登记为 Git 仓库。"
+    },
+    "notes": {
+      "add": "添加批注",
+      "placeholder": "写给 agent 的修改意见…",
+      "copy": "复制 {n} 条批注",
+      "copied": "已复制"
     }
   }
 }

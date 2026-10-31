@@ -464,6 +464,12 @@
       "failure": "La requête a échoué. Relancez pulls.review -d si votre session a expiré.",
       "requestFailed": "La requête a échoué. Réessayez.",
       "invalidPath": "Impossible d’enregistrer ce chemin comme dépôt Git."
+    },
+    "notes": {
+      "add": "Ajouter une note",
+      "placeholder": "Modification à demander à l'agent…",
+      "copy": "Copier {n} note | Copier {n} notes",
+      "copied": "Copié"
     }
   }
 }

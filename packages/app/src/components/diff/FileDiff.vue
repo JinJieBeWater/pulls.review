@@ -9,6 +9,8 @@ import DisplayFilePath from '@antfu/design/components/Display/DisplayFilePath.vu
 import { FileDiff as PierreFileDiff, VirtualizedFileDiff } from '@pierre/diffs'
 import { useIntersectionObserver } from '@vueuse/core'
 import { computed, inject, nextTick, onBeforeUnmount, onMounted, reactive, ref, useTemplateRef, watch } from 'vue'
+import NoteCard from '../../local/NoteCard.vue'
+import NoteComposer from '../../local/NoteComposer.vue'
 import { autoFetchFullFile } from '../../state/auto-fetch-full-file'
 import { isDark as globalIsDark, isDarkKey } from '../../state/dark'
 import { syntaxTheme } from '../../state/syntax-theme'
@@ -156,6 +158,8 @@ onBeforeUnmount(() => resizeObserver?.disconnect())
 // --- Review comment threads (github only - `store.reviews` is undefined elsewhere) ---
 
 const reviews = computed(() => props.store.reviews)
+// Fork (plans/fork/02): a local diff's threads are notes for an agent.
+const isLocal = computed(() => props.store.diff?.ref.kind === 'local')
 
 // Resolved and outdated threads are hidden by design; the global toggle hides
 // submitted threads but never the viewer's own pending drafts.
@@ -481,14 +485,23 @@ defineExpose({
         class="whitespace-normal px-2 text-left font-sans"
       >
         <AnalysisNoteCard v-for="(note, index) in group.notes" :key="index" :note="note" />
-        <ReviewThreadCard
+        <component
+          :is="isLocal ? NoteCard : ReviewThreadCard"
           v-for="thread in group.threads"
           :key="thread.rootId"
           :thread="thread"
           :reviews="store.reviews!"
         />
         <div v-if="group.hasDraft" class="my-1 max-w-200 overflow-hidden border border-base rounded-lg bg-base">
+          <NoteComposer
+            v-if="isLocal"
+            :busy="draftBusy"
+            :error="draftError"
+            @submit="submitDraft($event, 'review')"
+            @cancel="draftTarget = undefined"
+          />
           <CommentComposer
+            v-else
             :has-pending-review="!!store.reviews!.pendingReview"
             :busy="draftBusy"
             :error="draftError"
