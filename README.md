@@ -13,7 +13,7 @@ Pull request review made simple. Groups changed files, summarizes what matters, 
 
 ## Fork: multi-repo daemon
 
-This `multi-repo` branch of [JinJieBeWater/pulls.review](https://github.com/JinJieBeWater/pulls.review) adds one local entry for every repository: a background server on `http://127.0.0.1:7855` that opens any registered repository or worktree. It is not published to npm; install it from source (Node 20+, pnpm via corepack):
+This `multi-repo` branch of [JinJieBeWater/pulls.review](https://github.com/JinJieBeWater/pulls.review) adds one local entry for every repository: a background server on `http://127.0.0.1:7855` that opens any registered repository or worktree. It is not published to npm; install it from source (Node 22.22+, pnpm via corepack):
 
 ```sh
 git clone -b multi-repo https://github.com/JinJieBeWater/pulls.review
@@ -28,6 +28,8 @@ Then, inside any git repository:
 pulls.review -d       # register this repository and open it in the daemon
 pulls.review --stop   # stop the daemon and its worktree servers
 ```
+
+`-d` opens the daemon's tab shell at `http://127.0.0.1:7855`: one tab per review, any branch, commit or uncommitted changes of any registered worktree. Open more with `+`, switch with Cmd/Ctrl+1–9; the tabs come back after a reload. Chrome can install the shell as an app, and it stays signed in across restarts. Turn on the bell to get a system notification whenever an agent commits in a registered worktree while the shell is open. On a local diff, select lines and add notes for the agent; `Copy N notes` puts them on the clipboard as Markdown, with the file, the lines and the diff excerpt.
 
 Switch, add or remove repositories from the "Current repository" menu on the local home. Registrations live in `~/.pulls.review`; settings stay in the browser, shared by every repository on the daemon's origin. Without `-d`, `pulls.review` works like upstream. Update with `git pull && pnpm install && pnpm build`, then `pulls.review --stop` and `pulls.review -d`.
 
