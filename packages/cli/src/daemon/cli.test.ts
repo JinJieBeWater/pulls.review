@@ -35,6 +35,8 @@ afterEach(() => {
 })
 
 it('rejects stop targets, contradictory modes and invalid ports before starting anything', async () => {
+  await expect(routeDaemon({ pwa: true }, [])).rejects.toThrow('--pwa requires --daemon')
+  await expect(routeDaemon({ pwa: true, stop: true }, [])).rejects.toThrow('--pwa requires --daemon')
   await expect(routeDaemon({ daemon: true, stop: true }, [])).rejects.toThrow('cannot be combined')
   await expect(routeDaemon({ stop: true }, ['main'])).rejects.toThrow('--stop takes no target')
   await expect(routeDaemon({ daemon: true, from: 'antfu' }, [])).rejects.toThrow('does not take --from')
@@ -66,13 +68,13 @@ it('uses the authenticated pid record to stop a custom-port daemon', async () =>
   expect(process.stdout.write).toHaveBeenCalledWith('pulls.review daemon stopped\n')
 })
 
-function mockLaunch(path = '/r/repo-123/', shown = false) {
+function mockLaunch(path = '/r/repo-123/') {
   const state = { pid: 1234, port: 12345, session: 'a'.repeat(64) }
   const url = 'http://127.0.0.1:12345/login?token=private-launch-credential'
   vi.mocked(readState).mockResolvedValue(state)
   vi.stubGlobal('fetch', vi.fn()
     .mockResolvedValueOnce(Response.json({ pid: state.pid }))
-    .mockResolvedValueOnce(Response.json({ url, path, shown })))
+    .mockResolvedValueOnce(Response.json({ url, path })))
   return url
 }
 
@@ -90,13 +92,23 @@ it('opens the one-time login URL, or prints it to stderr with --no-open', async 
 it('launches the page the foreground command would open', async () => {
   mockLaunch('/r/repo-123/worktree')
   await routeDaemon({ daemon: true, port: '12345', worktree: true }, [])
-  expect(JSON.parse(vi.mocked(fetch).mock.calls[1][1]!.body as string)).toEqual({ path: process.cwd(), page: '/worktree', show: true })
+  expect(JSON.parse(vi.mocked(fetch).mock.calls[1][1]!.body as string)).toEqual({ path: process.cwd(), page: '/worktree' })
 })
 
-it('opens no browser tab when an open shell has shown the page', async () => {
-  mockLaunch('/r/repo-123/', true)
-  await routeDaemon({ daemon: true, port: '12345' }, [])
+it('hands repeated launches to the system so the installed PWA can focus its window', async () => {
+  for (let i = 0; i < 2; i++) {
+    const url = mockLaunch()
+    await routeDaemon({ daemon: true, pwa: true, port: '12345' }, [])
+    expect(openBrowser).toHaveBeenLastCalledWith(`web+pullsreview:${new URL(url).searchParams.get('token')}`)
+  }
+  expect(openBrowser).toHaveBeenCalledTimes(2)
+})
+
+it('prints the PWA launch credential without opening anything with --pwa --no-open', async () => {
+  mockLaunch()
+  await routeDaemon({ 'daemon': true, 'pwa': true, 'no-open': true, 'port': '12345' }, [])
   expect(openBrowser).not.toHaveBeenCalled()
+  expect(process.stderr.write).toHaveBeenCalledWith('One-time login credential (expires in 60 seconds): web+pullsreview:private-launch-credential\n')
 })
 
 it('refuses to open a daemon review outside a git repository', async () => {

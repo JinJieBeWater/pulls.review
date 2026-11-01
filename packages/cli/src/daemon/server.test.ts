@@ -113,8 +113,24 @@ it('refuses launches outside a checkout and serves the tab shell with only its o
   expect(asset.headers.get('content-type')).toMatch(/javascript/)
   expect(await asset.text()).toBe('export {}')
   expect((await call('/sw.js')).headers.get('content-type')).toMatch(/javascript/)
+  const manifest = await (await call('/manifest.webmanifest', {}, false)).json()
+  expect(manifest.launch_handler).toEqual({ client_mode: 'focus-existing' })
+  expect(manifest.protocol_handlers).toEqual([{ protocol: 'web+pullsreview', url: '/login?token=%s' }])
   for (const path of ['/assets/missing.js', '/assets/%2e%2e%2f%2e%2e%2fpulls-daemon-secret.txt', '/assets/..%2f..%2fpulls-daemon-secret.txt'])
     expect((await call(path)).status).toBe(404)
+})
+
+it('exchanges a PWA launch token for a cookie and page without navigating the shell', async () => {
+  const { call, options } = await fixture()
+  const response = await call('/api/launch', { method: 'POST', headers: { origin: options.origin }, body: JSON.stringify({ path: '/repo', page: '/worktree' }) })
+  const { url } = await response.json()
+  const token = new URL(url).searchParams.get('token')
+  const loginPath = `/login?token=${encodeURIComponent(`web+pullsreview:${token}`)}`
+  const login = await call(loginPath, { headers: { accept: 'application/json' } }, false)
+  expect(login.status).toBe(200)
+  expect(await login.json()).toEqual({ path: '/r/main-123/worktree' })
+  expect(login.headers.get('set-cookie')).toMatch(/; HttpOnly; SameSite=Strict; Path=\/; Max-Age=31536000$/)
+  expect((await call(loginPath, { headers: { accept: 'application/json' } }, false)).status).toBe(401)
 })
 
 it('streams commits to each open shell until it goes away', async () => {
@@ -132,19 +148,10 @@ it('streams commits to each open shell until it goes away', async () => {
   expect(listeners.size).toBe(0)
 })
 
-it('serves the shell for a review opened in the address bar and shows launches in open shells', async () => {
+it('serves the shell for a review opened in the address bar', async () => {
   const { call, children } = await fixture()
   expect(await (await call('/r/main-123/worktree', { headers: { 'sec-fetch-dest': 'document' } })).text()).toBe('<title>shell</title>')
   expect(children.get).not.toHaveBeenCalled()
-  const launch = async (body: unknown) => (await call('/api/launch', { method: 'POST', headers: { origin: 'http://127.0.0.1:7855' }, body: JSON.stringify(body) })).json()
-  expect((await launch({ path: '/repo', show: true })).shown).toBe(false)
-  const reader = (await call('/api/events')).body!.getReader()
-  const read = async () => new TextDecoder().decode((await reader.read()).value)
-  await read()
-  expect((await launch({ path: '/repo' })).shown).toBe(false)
-  expect((await launch({ path: '/repo', page: '/worktree', show: true })).shown).toBe(true)
-  expect(await read()).toBe('event: show\ndata: "/r/main-123/worktree"\n\n')
-  await reader.cancel()
 })
 
 it('disconnects removed registrations without stopping their worktree servers or other tunnels', async () => {

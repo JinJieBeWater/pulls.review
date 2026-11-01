@@ -20,8 +20,6 @@ afterEach(() => {
 function stubEvents() {
   const events = {
     onmessage: null as ((event: MessageEvent) => void) | null,
-    shows: [] as ((event: MessageEvent) => void)[],
-    addEventListener: (_type: string, listener: (event: MessageEvent) => void) => void events.shows.push(listener),
     close: vi.fn(),
   }
   vi.stubGlobal('EventSource', vi.fn(class {
@@ -72,17 +70,75 @@ it('dots the focused active tab while suppressing its system notification', asyn
   }
 })
 
-it('shows a launched page in its worktree\'s tab and names the active page in the address bar', async () => {
+it('opens the addressed page in its worktree\'s tab instead of its old page', async () => {
   localStorage.setItem('pulls.review:tabs', JSON.stringify({ tabs: [{ key: 1, url: '/r/tree-1/commit/abc' }, { key: 2, url: '/r/tree-2/' }], active: 2 }))
-  const events = stubEvents()
+  history.replaceState(null, '', '/r/tree-1/worktree')
+  stubEvents()
   const wrapper = mountShell()
   try {
     await flushPromises()
-    expect(location.pathname).toBe('/r/tree-2/')
-    events.shows[0]!(new MessageEvent('show', { data: JSON.stringify('/r/tree-1/worktree') }))
-    await nextTick()
     expect(wrapper.findAll('iframe').map(frame => frame.attributes('src'))).toEqual(['/r/tree-1/worktree', '/r/tree-2/'])
     expect(location.pathname).toBe('/r/tree-1/worktree')
+  }
+  finally {
+    wrapper.unmount()
+  }
+})
+
+it('handles PWA launches in the existing shell without adding a second tab for the worktree', async () => {
+  localStorage.setItem('pulls.review:tabs', JSON.stringify({ tabs: [{ key: 1, url: '/r/tree-1/commit/abc' }], active: 1 }))
+  stubEvents()
+  const queue = { setConsumer: vi.fn() }
+  vi.stubGlobal('launchQueue', queue)
+  const fetch = vi.fn().mockResolvedValue(Response.json({ path: '/r/tree-1/worktree' }))
+  vi.stubGlobal('fetch', fetch)
+  const wrapper = mountShell()
+  try {
+    await flushPromises()
+    expect(queue.setConsumer).toHaveBeenCalledOnce()
+    const consume = queue.setConsumer.mock.calls[0][0]
+    await consume({ targetURL: `${location.origin}/login?token=one-time` })
+    await nextTick()
+    expect(fetch).toHaveBeenCalledWith(`${location.origin}/login?token=one-time`, { headers: { Accept: 'application/json' } })
+    expect(wrapper.findAll('iframe').map(frame => frame.attributes('src'))).toEqual(['/r/tree-1/worktree'])
+    expect(location.pathname).toBe('/r/tree-1/worktree')
+    await consume({ targetURL: `${location.origin}/r/tree-1/worktree` })
+    await nextTick()
+    expect(wrapper.findAll('iframe')).toHaveLength(1)
+    await consume({ targetURL: 'https://evil.test/login?token=anything' })
+    expect(fetch).toHaveBeenCalledOnce()
+    // On a cold launch the initial redirect can have used the token before the queue delivers it.
+    fetch.mockResolvedValueOnce(new Response(null, { status: 401 }))
+    await consume({ targetURL: `${location.origin}/login?token=already-used` })
+    await nextTick()
+    expect(location.pathname).toBe('/r/tree-1/worktree')
+    expect(wrapper.findAll('iframe')).toHaveLength(1)
+  }
+  finally {
+    wrapper.unmount()
+  }
+})
+
+it('keeps the last PWA target when two launches arrive before sign-in finishes', async () => {
+  stubEvents()
+  const queue = { setConsumer: vi.fn() }
+  vi.stubGlobal('launchQueue', queue)
+  let release!: (response: Response) => void
+  vi.stubGlobal('fetch', vi.fn()
+    .mockImplementationOnce(() => new Promise<Response>(resolve => release = resolve))
+    .mockResolvedValueOnce(Response.json({ path: '/r/tree-1/worktree' })))
+  const wrapper = mountShell()
+  try {
+    await flushPromises()
+    const consume = queue.setConsumer.mock.calls[0][0]
+    const first = consume({ targetURL: `${location.origin}/login?token=first` })
+    const last = consume({ targetURL: `${location.origin}/login?token=last` })
+    await flushPromises()
+    release(Response.json({ path: '/r/tree-1/commit/old' }))
+    await Promise.all([first, last])
+    await nextTick()
+    expect(location.pathname).toBe('/r/tree-1/worktree')
+    expect(wrapper.findAll('iframe')).toHaveLength(1)
   }
   finally {
     wrapper.unmount()

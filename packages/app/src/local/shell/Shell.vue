@@ -33,6 +33,7 @@ const worktrees = ref(new Map<string, { repo: string, tree: DaemonWorktree }>())
 /** Worktrees with a commit not seen yet. */
 const dots = reactive(new Set<string>())
 const connection = ref<'online' | 'offline' | 'signed-out'>('online')
+let events: EventSource | undefined
 const { t } = useI18n()
 
 /** The page this shell was opened at (`/r/<id>/…` from a launch or the address bar), before it follows the tabs. */
@@ -73,6 +74,36 @@ function launch(url: string) {
   else if (win.location.pathname + win.location.search !== url)
     win.location.assign(url)
   show(next)
+}
+
+async function onAppLaunch({ targetURL }: { targetURL?: string }) {
+  if (!targetURL)
+    return
+  const url = new URL(targetURL)
+  if (url.origin !== location.origin)
+    return
+  try {
+    let page = url.pathname + url.search + url.hash
+    if (url.pathname === '/login') {
+      const response = await fetch(url.href, { headers: { Accept: 'application/json' } })
+      if (!response.ok) {
+        // A cold launch may already have exchanged the token through its initial navigation.
+        await loadWorktrees()
+        return
+      }
+      page = (await response.json()).path
+    }
+    if (typeof page === 'string' && isReviewUrl(page)) {
+      launch(page)
+      await loadWorktrees()
+      if (!events && connection.value === 'online')
+        listen()
+    }
+  }
+  catch {
+    connection.value = 'offline'
+    void waitForDaemon()
+  }
 }
 
 useEventListener(window, OPEN_WORKTREE_EVENT, (event) => {
@@ -174,15 +205,9 @@ function onCommit(raw: string) {
   }
 }
 
-let events: EventSource | undefined
 function listen() {
   events = new EventSource('/api/events')
   events.onmessage = event => onCommit(event.data)
-  events.addEventListener('show', (event) => {
-    const url = JSON.parse(event.data)
-    if (typeof url === 'string' && isReviewUrl(url))
-      launch(url)
-  })
   // EventSource retries by itself; a daemon that went away gets the offline page instead.
   events.onerror = async () => {
     if (await fetch('/api/status').then(response => response.ok, () => false))
@@ -239,8 +264,14 @@ onMounted(async () => {
     launch(requested)
   else
     history.replaceState(null, '', active.value?.url ?? '/')
+  if ('launchQueue' in window) {
+    const queue = window.launchQueue as { setConsumer: (consumer: typeof onAppLaunch) => void }
+    // LaunchQueue does not wait for async consumers; keep successive launches in order.
+    let pending = Promise.resolve()
+    queue.setConsumer(params => pending = pending.then(() => onAppLaunch(params)))
+  }
   await loadWorktrees()
-  if (connection.value === 'online')
+  if (!events && connection.value === 'online')
     listen()
   void waitForDaemon()
 })

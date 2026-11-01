@@ -28,6 +28,7 @@ Code, OpenCode, Pi) when "Local agent" is the provider in Settings.
 
 Options:
   -d, --daemon    open this worktree in the background multi-repo server
+  --pwa           with --daemon, open the installed pulls.review app
   --stop          stop the daemon and its worktree servers
   --worktree      open the uncommitted changes against HEAD
   --from <login>  with a GitHub pull request, load the AI analysis <login> shared
@@ -43,6 +44,7 @@ async function main() {
   const { values: flags, positionals } = parseArgs({
     options: {
       'daemon': { type: 'boolean', short: 'd' },
+      'pwa': { type: 'boolean' },
       'stop': { type: 'boolean' },
       'worktree': { type: 'boolean' },
       'from': { type: 'string' },
@@ -56,7 +58,7 @@ async function main() {
     process.stdout.write(HELP)
     return
   }
-  if (flags.daemon || flags.stop) {
+  if (flags.daemon || flags.stop || flags.pwa) {
     const { routeDaemon } = await import('./daemon/cli')
     await routeDaemon(flags, positionals)
     return
