@@ -142,12 +142,19 @@ Wording (all 12 locales, x18n):
 - A `+` at the end of the tab bar lists every worktree (the list and search of
   `RepositorySwitcher.vue`); picking one opens a tab. Each tab has a close button.
 - The open tab URLs and the active tab are kept in `localStorage` and restored.
+- The address bar names the active tab's page (`/r/<id>/…`). Opening such a URL in
+  the address bar (`Sec-Fetch-Dest: document`) serves the shell, which shows that
+  page in its worktree's tab; frames get the review itself. A page can be reloaded,
+  bookmarked or shared.
 - Shortcuts: Cmd/Ctrl+1–9 select a tab. The shell adds a `keydown` listener to each
   frame's `contentWindow` after it loads (same origin), so no code runs in the app.
 - Frames need `allow="clipboard-write"` for note copying.
-- `pulls.review -d` signs in and lands on the shell, which restores its tabs and
-  selects a tab already at the launched page, or opens one. A command cannot focus an
-  existing browser tab, so each `-d` opens a new browser tab.
+- `pulls.review -d` shows its page in the worktree's tab, taking the tab there, or
+  opens a tab. With a shell open (its event stream connected), the daemon sends it
+  the page as a `show` event and `-d` opens nothing; otherwise `-d` opens the sign-in
+  URL in a new browser tab, which lands on the page. One path on every OS and browser,
+  with no per-browser scripting. The open window does not come to the front: a page
+  cannot raise itself, and only an installed PWA's `launch_handler` could.
 
 ## 4. Commit notifications
 
