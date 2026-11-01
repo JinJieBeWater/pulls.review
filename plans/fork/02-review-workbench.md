@@ -146,8 +146,8 @@ Wording (all 12 locales, x18n):
   frame's `contentWindow` after it loads (same origin), so no code runs in the app.
 - Frames need `allow="clipboard-write"` for note copying.
 - `pulls.review -d` signs in and lands on the shell, which restores its tabs and
-  opens or selects the current worktree. A command cannot focus an existing browser
-  tab, so each `-d` opens a new browser tab.
+  selects a tab already at the launched page, or opens one. A command cannot focus an
+  existing browser tab, so each `-d` opens a new browser tab.
 
 ## 4. Commit notifications
 

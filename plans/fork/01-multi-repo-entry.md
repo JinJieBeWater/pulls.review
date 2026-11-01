@@ -63,8 +63,8 @@ These limit new work only; nothing upstream already does is removed.
   like the standalone command and opens nothing.
 - `pulls.review --stop` stops the daemon and every worktree process, using the pid in
   `~/.pulls.review/`.
-- `-d` takes no target in the first version (branch, `--worktree`, PR URL): upstream's
-  own picker covers them.
+- `-d` opens the page the foreground command would (the current branch, or a target,
+  `--worktree`); `--from` is refused.
 - All daemon state shares upstream's `~/.pulls.review/` with `devframe/`.
 - Not published. After building, `bun link` in `packages/cli` puts the fork's
   `pulls.review` on `PATH`.
