@@ -24,10 +24,11 @@ export function showWorktree(state: Tabs, url: string): Tabs {
   return tab ? { ...state, active: tab.key } : openTab(state, url)
 }
 
-/** Selects a tab already at `url`, or opens one: a launch asks for that page, not wherever a tab was left. */
+/** Shows `url` in its worktree's first tab, or a new one: a launch asks for that page, not wherever the tab was left. */
 export function showPage(state: Tabs, url: string): Tabs {
-  const tab = state.tabs.find(tab => tab.url === url)
-  return tab ? { ...state, active: tab.key } : openTab(state, url)
+  const id = worktreeOf(url)
+  const tab = state.tabs.find(tab => worktreeOf(tab.url) === id)
+  return tab ? { tabs: state.tabs.map(other => other === tab ? { ...tab, url } : other), active: tab.key } : openTab(state, url)
 }
 
 /** Closing the active tab selects its right neighbour, else its left one. */

@@ -78,10 +78,9 @@ it.runIf(process.env.PULLS_DAEMON_SMOKE === '1')('starts built workers, reuses t
     const cookie = redirect.headers.get('set-cookie')?.split(';')[0]
     if (!cookie)
       throw new Error('Missing session cookie')
-    // Signed in, the browser lands on the tab shell, which opens this worktree.
-    const landing = new URL(redirect.headers.get('location')!, origin)
-    expect(landing.pathname).toBe('/')
-    const mainPath = landing.searchParams.get('open')!
+    // Signed in, the browser lands on this worktree's page, which the tab shell shows.
+    const mainPath = new URL(redirect.headers.get('location')!, origin).pathname
+    expect(mainPath).toMatch(/^\/r\/[\w-]+\//)
     const second = await run(['-d', '--no-open', '--port', String(port)], linked)
     expect(v.parse(DaemonStateSchema, JSON.parse(await readFile(pidFile, 'utf8')))).toEqual(state)
     expect(JSON.parse(await readFile(join(home, '.pulls.review', 'repos.json'), 'utf8'))).toEqual({ repos: [{ path: main }] })
@@ -90,7 +89,7 @@ it.runIf(process.env.PULLS_DAEMON_SMOKE === '1')('starts built workers, reuses t
     for (const path of [mainPath, linkedPath]) {
       const response = await fetch(origin + path, { headers: { cookie }, signal: AbortSignal.timeout(30_000) })
       expect(response.status).toBe(200)
-      expect(await response.text()).toContain(`<base href="${path}">`)
+      expect(await response.text()).toContain(`<base href="${path.match(/^\/r\/[\w-]+\//)![0]}">`)
     }
     pids = await descendants(state.pid)
     expect(pids.length).toBeGreaterThanOrEqual(3)
