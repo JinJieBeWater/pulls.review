@@ -101,16 +101,17 @@ async function start(port: number): Promise<DaemonState> {
 }
 
 async function launch(state: DaemonState, page: string, noOpen: boolean): Promise<void> {
-  const response = await control(state, '/api/launch', { path: process.cwd(), page })
+  const response = await control(state, '/api/launch', { path: process.cwd(), page, show: !noOpen })
   if (response.status === 422)
     throw new Error('Not a git repository: run pulls.review -d inside one')
   if (!response.ok)
     throw new Error('Could not register current git worktree')
-  const { url, path } = v.parse(LaunchSchema, await response.json())
+  const { url, path, shown } = v.parse(LaunchSchema, await response.json())
   process.stdout.write(`pulls.review daemon: ${daemonOrigin(state.port)}${path}\n`)
   if (noOpen)
     process.stderr.write(`One-time login credential (expires in 60 seconds): ${url}\n`)
-  else
+  // An open shell has shown the page, so no new browser tab. A page can't raise its own window: that one stays where it is.
+  else if (!shown)
     await openBrowser(url)
 }
 

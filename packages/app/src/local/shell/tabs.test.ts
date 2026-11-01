@@ -9,10 +9,10 @@ describe('tabs', () => {
     expect(showWorktree(state, '/r/c-3/').tabs.map(tab => tab.url)).toEqual(['/r/a-1/commit/HEAD', '/r/b-2/', '/r/c-3/'])
   })
 
-  it('opens a launched page unless a tab is already there', () => {
-    const state = openTab({ tabs: [] }, '/r/a-1/commit/HEAD')
-    expect(showPage(state, '/r/a-1/commit/HEAD')).toEqual(state)
-    expect(showPage(state, '/r/a-1/worktree')).toEqual({ tabs: [...state.tabs, { key: 2, url: '/r/a-1/worktree' }], active: 2 })
+  it('shows a launched page in its worktree\'s tab, or a new one', () => {
+    const state = openTab(openTab({ tabs: [] }, '/r/a-1/commit/HEAD'), '/r/b-2/')
+    expect(showPage(state, '/r/a-1/worktree')).toEqual({ tabs: [{ key: 1, url: '/r/a-1/worktree' }, state.tabs[1]], active: 1 })
+    expect(showPage(state, '/r/c-3/worktree')).toEqual({ tabs: [...state.tabs, { key: 3, url: '/r/c-3/worktree' }], active: 3 })
   })
 
   it('selects a neighbour when the active tab closes', () => {

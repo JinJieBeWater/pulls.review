@@ -90,7 +90,7 @@ it('protects every HTTP surface, exchanges launch links once and never logs cred
   const loginPath = new URL(url).pathname + new URL(url).search
   const login = await call(loginPath, {}, false)
   expect(login.status).toBe(303)
-  expect(login.headers.get('location')).toBe('/?open=%2Fr%2Fmain-123%2F')
+  expect(login.headers.get('location')).toBe('/r/main-123/')
   expect(login.headers.get('set-cookie')).toMatch(/; HttpOnly; SameSite=Strict; Path=\/; Max-Age=31536000$/)
   expect(login.headers.get('referrer-policy')).toBe('no-referrer')
   expect((await call(loginPath, {}, false)).status).toBe(401)
@@ -130,6 +130,21 @@ it('streams commits to each open shell until it goes away', async () => {
   expect(await read()).toBe(`data: ${JSON.stringify(event)}\n\n`)
   await reader.cancel()
   expect(listeners.size).toBe(0)
+})
+
+it('serves the shell for a review opened in the address bar and shows launches in open shells', async () => {
+  const { call, children } = await fixture()
+  expect(await (await call('/r/main-123/worktree', { headers: { 'sec-fetch-dest': 'document' } })).text()).toBe('<title>shell</title>')
+  expect(children.get).not.toHaveBeenCalled()
+  const launch = async (body: unknown) => (await call('/api/launch', { method: 'POST', headers: { origin: 'http://127.0.0.1:7855' }, body: JSON.stringify(body) })).json()
+  expect((await launch({ path: '/repo', show: true })).shown).toBe(false)
+  const reader = (await call('/api/events')).body!.getReader()
+  const read = async () => new TextDecoder().decode((await reader.read()).value)
+  await read()
+  expect((await launch({ path: '/repo' })).shown).toBe(false)
+  expect((await launch({ path: '/repo', page: '/worktree', show: true })).shown).toBe(true)
+  expect(await read()).toBe('event: show\ndata: "/r/main-123/worktree"\n\n')
+  await reader.cancel()
 })
 
 it('disconnects removed registrations without stopping their worktree servers or other tunnels', async () => {

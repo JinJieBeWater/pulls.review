@@ -7,7 +7,7 @@ import FeedbackEmptyState from '@antfu/design/components/Feedback/FeedbackEmptyS
 import { useEventListener, useLocalStorage, useTitle } from '@vueuse/core'
 import { TabsList, TabsRoot, TabsTrigger } from 'reka-ui'
 import * as v from 'valibot'
-import { computed, nextTick, onMounted, onScopeDispose, reactive, ref } from 'vue'
+import { computed, nextTick, onMounted, onScopeDispose, reactive, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import DarkToggle from '../../components/DarkToggle.vue'
 import LanguageMenu from '../../components/LanguageMenu.vue'
@@ -35,8 +35,12 @@ const dots = reactive(new Set<string>())
 const connection = ref<'online' | 'offline' | 'signed-out'>('online')
 const { t } = useI18n()
 
+/** The page this shell was opened at (`/r/<id>/…` from a launch or the address bar), before it follows the tabs. */
+const requested = location.pathname + location.search
 const active = computed(() => state.value.tabs.find(tab => tab.key === state.value.active))
 useTitle(() => active.value ? `${titles.get(active.value.key) ?? label(active.value.url)} · pulls.review` : 'pulls.review')
+// The address bar names the active tab's page, so it can be reloaded, bookmarked or shared.
+watch(() => active.value?.url ?? '/', url => history.replaceState(null, '', url))
 
 function select(key: number | undefined) {
   const tab = state.value.tabs.find(tab => tab.key === key)
@@ -58,6 +62,17 @@ function show(next: Tabs) {
 function pick(tree: DaemonWorktree) {
   show(openTab(state.value, `/r/${tree.id}/`))
   void loadWorktrees()
+}
+
+/** Shows a launched page in its worktree's tab, taking that tab there if it is elsewhere. */
+function launch(url: string) {
+  const next = showPage(state.value, url)
+  const win = frames.get(next.active!)
+  if (!win)
+    sources.set(next.active!, url)
+  else if (win.location.pathname + win.location.search !== url)
+    win.location.assign(url)
+  show(next)
 }
 
 useEventListener(window, OPEN_WORKTREE_EVENT, (event) => {
@@ -163,6 +178,11 @@ let events: EventSource | undefined
 function listen() {
   events = new EventSource('/api/events')
   events.onmessage = event => onCommit(event.data)
+  events.addEventListener('show', (event) => {
+    const url = JSON.parse(event.data)
+    if (typeof url === 'string' && isReviewUrl(url))
+      launch(url)
+  })
   // EventSource retries by itself; a daemon that went away gets the offline page instead.
   events.onerror = async () => {
     if (await fetch('/api/status').then(response => response.ok, () => false))
@@ -215,13 +235,10 @@ useEventListener(window, 'keydown', onKey)
 onMounted(async () => {
   for (const tab of state.value.tabs)
     sources.set(tab.key, tab.url)
-  // `pulls.review -d` lands here with the page to show.
-  const open = new URL(location.href).searchParams.get('open')
-  if (open) {
-    history.replaceState(null, '', '/')
-    if (isReviewUrl(open))
-      show(showPage(state.value, open))
-  }
+  if (isReviewUrl(requested))
+    launch(requested)
+  else
+    history.replaceState(null, '', active.value?.url ?? '/')
   await loadWorktrees()
   if (connection.value === 'online')
     listen()

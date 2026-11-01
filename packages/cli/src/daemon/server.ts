@@ -13,7 +13,7 @@ import { createShellFiles, MANIFEST, SERVICE_WORKER } from './shell'
 
 const pathSchema = v.object({ path: v.pipe(v.string(), v.minLength(1), v.maxLength(4096)) })
 // The page inside the worktree's review, as `pageFor` picks it.
-const launchSchema = v.object({ ...pathSchema.entries, page: v.optional(v.pipe(v.string(), v.startsWith('/'), v.maxLength(4096)), '/') })
+const launchSchema = v.object({ ...pathSchema.entries, page: v.optional(v.pipe(v.string(), v.startsWith('/'), v.maxLength(4096)), '/'), show: v.optional(v.boolean(), false) })
 
 export function createDaemonApp(options: {
   origin: string
@@ -30,6 +30,8 @@ export function createDaemonApp(options: {
   const { origin, session, registry, children, commits, connections, stop, log } = options
   const launches = createLaunchTokens()
   const shell = createShellFiles(options.client)
+  /** Each open shell's event stream, so a launch can show its page in one instead of a new browser tab. */
+  const shells = new Set<(text: string) => void>()
   const app = new H3({
     onError: error => new Response('Daemon request failed', { status: error.status }),
     onResponse(response, event) {
@@ -50,7 +52,7 @@ export function createDaemonApp(options: {
       return new Response(null, {
         status: 303,
         // A year: the session secret survives restarts (`loadSession`), so an installed app stays signed in.
-        headers: { 'Set-Cookie': `${COOKIE}=${session}; HttpOnly; SameSite=Strict; Path=/; Max-Age=31536000`, 'Location': `/?open=${encodeURIComponent(path)}` },
+        headers: { 'Set-Cookie': `${COOKIE}=${session}; HttpOnly; SameSite=Strict; Path=/; Max-Age=31536000`, 'Location': path },
       })
     }
     // Fetched without the cookie by the browser's install check.
@@ -82,9 +84,11 @@ export function createDaemonApp(options: {
           }
         }
         const unsubscribe = commits.subscribe(event => send(`data: ${JSON.stringify(event)}\n\n`))
+        shells.add(send)
         const ping = setInterval(send, 30_000, ': ping\n\n')
         close = () => {
           unsubscribe()
+          shells.delete(send)
           clearInterval(ping)
         }
         send(': connected\n\n')
@@ -134,7 +138,11 @@ export function createDaemonApp(options: {
     void commits.rescan()
     const path = `/r/${tree.id}${parsed.output.page}`
     const token = launches.issue(path)
-    return { url: `${origin}/login?token=${token}`, path }
+    if (parsed.output.show) {
+      for (const send of shells)
+        send(`event: show\ndata: ${JSON.stringify(path)}\n\n`)
+    }
+    return { url: `${origin}/login?token=${token}`, path, shown: parsed.output.show && shells.size > 0 }
   })
   // The tab shell (plans/fork/02); each tab is a review under `/r/<id>/`.
   app.get('/', () => shell.page())
@@ -146,6 +154,9 @@ export function createDaemonApp(options: {
     const tree = id ? await registry.find(id) : undefined
     if (!tree)
       return new Response('Worktree not registered', { status: 404 })
+    // Opened in the address bar (not a tab's frame): the shell, which shows this page in a tab.
+    if (event.req.method === 'GET' && event.req.headers.get('sec-fetch-dest') === 'document')
+      return shell.page()
     const target = await children.get(tree)
     const childOrigin = `http://127.0.0.1:${target.port}`
     try {
