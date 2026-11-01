@@ -115,7 +115,20 @@ Wording (all 12 locales, x18n):
   this, an installed app opened from the Dock after any restart shows
   `Run pulls.review -d to sign in`.
 - **PWA**: a manifest and icons, `start_url` `/` (the shell), `display: standalone`.
-  `127.0.0.1` is a secure origin, so Chrome installs it.
+  `127.0.0.1` is a secure origin, so Chrome installs it. The manifest declares
+  `launch_handler.client_mode: focus-existing` and a `web+pullsreview` protocol
+  handler at `/login?token=%s`. `pulls.review -d --pwa` opens
+  `web+pullsreview:<one-time-token>` through the system URL handler. The browser
+  brings the app to the front and reuses its window. Its `launchQueue` consumer
+  exchanges the token for a session cookie and review path as JSON, then shows
+  the page without reloading the shell. A cold launch uses the ordinary sign-in
+  redirect; a repeated token delivered by the queue leaves that page in place.
+  Launches are handled in order, so slow sign-in cannot overwrite a later target.
+- **Updating an existing installation**: Chrome throttles manifest checks and can
+  defer registration until the app closes. Restart Chrome, open the PWA once, then
+  close it to apply the updated manifest. Allow protocol handling at Chrome's first
+  prompt. These are browser permissions; the CLI does not change them. See
+  [Chrome's manifest update rules](https://web.dev/articles/manifest-updates).
 - **Daemon not running**: a minimal service worker (`/sw.js`) keeps the shell's own
   files, network first: fresh while the daemon runs, the last copy when it is down.
   Reviews (`/r/`), the API and sign-in always go to the network. The shell then shows
@@ -150,11 +163,10 @@ Wording (all 12 locales, x18n):
   frame's `contentWindow` after it loads (same origin), so no code runs in the app.
 - Frames need `allow="clipboard-write"` for note copying.
 - `pulls.review -d` shows its page in the worktree's tab, taking the tab there, or
-  opens a tab. With a shell open (its event stream connected), the daemon sends it
-  the page as a `show` event and `-d` opens nothing; otherwise `-d` opens the sign-in
-  URL in a new browser tab, which lands on the page. One path on every OS and browser,
-  with no per-browser scripting. The open window does not come to the front: a page
-  cannot raise itself, and only an installed PWA's `launch_handler` could.
+  opens a tab. `--pwa` delegates window reuse and activation to the installed app's
+  protocol handler. Plain HTTP opening follows the default browser's behavior and
+  may open another browser tab. Commit events remain on the daemon's event stream;
+  launches do not use it. No browser scripting or per-platform focus code.
 
 ## 4. Commit notifications
 
@@ -206,3 +218,19 @@ focused active tab.
 
 Tab labels are `repository · branch`; the page's own title goes in the tooltip and
 the window title.
+
+PWA launch (2026-11-01): an isolated Chrome 156 profile installed the built app and
+registered its protocol in the native macOS app bundle. Launching the protocol's
+callback URL through Chrome's PWA launcher reused the same window and document,
+kept one tab per worktree, selected the requested review, and worked from a closed
+app. The first OS/browser protocol permission prompt was not exercised in headless
+Chrome. Windows and Linux were not run. The 42 daemon/shell checks (including the
+built-worker smoke test), both packages' type checks, and changed-file lint passed.
+
+Native macOS follow-up (2026-11-01): restarting Chrome with session restore and
+opening the existing PWA updated its protocol registration without reinstalling.
+The system handler resolved to that app. Two actual `-d --pwa --worktree` launches
+reached the current repository: the cold launch redirected to its review and the
+warm launch exchanged its credential as JSON. The PWA process and Chrome's native
+window IDs stayed unchanged on the second launch. This checked the CLI path used
+by the Herdr button; no desktop input automation was needed.
