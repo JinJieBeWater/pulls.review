@@ -14,7 +14,7 @@ import LanguageMenu from '../../components/LanguageMenu.vue'
 import { DaemonRequestError, readRepos, readWorktrees } from '../daemon'
 import WorktreeMenu from '../WorktreeMenu.vue'
 import { OPEN_SETTINGS_EVENT, OPEN_WORKTREE_EVENT } from './in-shell'
-import { closeTab, isReviewUrl, openTab, showWorktree, TabsSchema, worktreeOf } from './tabs'
+import { closeTab, isReviewUrl, openTab, showPage, showWorktree, TabsSchema, worktreeOf } from './tabs'
 
 const state = useLocalStorage<Tabs>('pulls.review:tabs', { tabs: [] }, {
   serializer: {
@@ -215,12 +215,12 @@ useEventListener(window, 'keydown', onKey)
 onMounted(async () => {
   for (const tab of state.value.tabs)
     sources.set(tab.key, tab.url)
-  // `pulls.review -d` lands here with the worktree to show.
+  // `pulls.review -d` lands here with the page to show.
   const open = new URL(location.href).searchParams.get('open')
   if (open) {
     history.replaceState(null, '', '/')
     if (isReviewUrl(open))
-      show(showWorktree(state.value, open))
+      show(showPage(state.value, open))
   }
   await loadWorktrees()
   if (connection.value === 'online')

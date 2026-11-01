@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { closeTab, isReviewUrl, openTab, showWorktree } from './tabs'
+import { closeTab, isReviewUrl, openTab, showPage, showWorktree } from './tabs'
 
 describe('tabs', () => {
   it('selects a worktree\'s open tab instead of opening another', () => {
@@ -7,6 +7,12 @@ describe('tabs', () => {
     state = openTab(state, '/r/b-2/')
     expect(showWorktree(state, '/r/a-1/').active).toBe(1)
     expect(showWorktree(state, '/r/c-3/').tabs.map(tab => tab.url)).toEqual(['/r/a-1/commit/HEAD', '/r/b-2/', '/r/c-3/'])
+  })
+
+  it('opens a launched page unless a tab is already there', () => {
+    const state = openTab({ tabs: [] }, '/r/a-1/commit/HEAD')
+    expect(showPage(state, '/r/a-1/commit/HEAD')).toEqual(state)
+    expect(showPage(state, '/r/a-1/worktree')).toEqual({ tabs: [...state.tabs, { key: 2, url: '/r/a-1/worktree' }], active: 2 })
   })
 
   it('selects a neighbour when the active tab closes', () => {

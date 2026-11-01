@@ -34,9 +34,10 @@ afterEach(() => {
   vi.mocked(readState).mockReset()
 })
 
-it('rejects review targets, contradictory modes and invalid ports before starting anything', async () => {
-  await expect(routeDaemon({ daemon: true, stop: true }, [])).rejects.toThrow('take no target')
-  await expect(routeDaemon({ daemon: true }, ['main'])).rejects.toThrow('take no target')
+it('rejects stop targets, contradictory modes and invalid ports before starting anything', async () => {
+  await expect(routeDaemon({ daemon: true, stop: true }, [])).rejects.toThrow('cannot be combined')
+  await expect(routeDaemon({ stop: true }, ['main'])).rejects.toThrow('--stop takes no target')
+  await expect(routeDaemon({ daemon: true, from: 'antfu' }, [])).rejects.toThrow('does not take --from')
   for (const port of ['0', '1.5', '65536'])
     await expect(routeDaemon({ daemon: true, port }, [])).rejects.toThrow('--port must be')
   expect(readState).not.toHaveBeenCalled()
@@ -84,6 +85,12 @@ it('opens the one-time login URL, or prints it to stderr with --no-open', async 
   await routeDaemon({ 'daemon': true, 'port': '12345', 'no-open': true }, [])
   expect(process.stderr.write).toHaveBeenCalledWith(`One-time login credential (expires in 60 seconds): ${url}\n`)
   expect(process.stdout.write).not.toHaveBeenCalledWith(expect.stringContaining('token='))
+})
+
+it('launches the page the foreground command would open', async () => {
+  mockLaunch('/r/repo-123/worktree')
+  await routeDaemon({ daemon: true, port: '12345', worktree: true }, [])
+  expect(JSON.parse(vi.mocked(fetch).mock.calls[1][1]!.body as string)).toEqual({ path: process.cwd(), page: '/worktree' })
 })
 
 it('refuses to open a daemon review outside a git repository', async () => {

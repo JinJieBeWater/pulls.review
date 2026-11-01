@@ -7,6 +7,7 @@ import process from 'node:process'
 import { setTimeout as delay } from 'node:timers/promises'
 import { open as openBrowser } from 'devframe/utils/open'
 import * as v from 'valibot'
+import { browserPath, pageFor } from '../page'
 import { DaemonMessageSchema, LaunchSchema, StatusSchema } from './schema'
 import { COOKIE } from './security'
 import { daemonOrigin, readState, stateDir } from './state'
@@ -99,8 +100,8 @@ async function start(port: number): Promise<DaemonState> {
   }
 }
 
-async function launch(state: DaemonState, noOpen: boolean): Promise<void> {
-  const response = await control(state, '/api/launch', { path: process.cwd() })
+async function launch(state: DaemonState, page: string, noOpen: boolean): Promise<void> {
+  const response = await control(state, '/api/launch', { path: process.cwd(), page })
   if (response.status === 422)
     throw new Error('Not a git repository: run pulls.review -d inside one')
   if (!response.ok)
@@ -140,11 +141,15 @@ export async function routeDaemon(flags: {
   'from'?: string
   'no-open'?: boolean
 }, positionals: string[]): Promise<void> {
-  if ((flags.daemon && flags.stop) || flags.worktree || flags.from !== undefined || positionals.length)
-    throw new Error('--daemon and --stop take no target and cannot be combined with review options')
+  if (flags.daemon && flags.stop)
+    throw new Error('--daemon and --stop cannot be combined')
+  if (flags.from !== undefined || (flags.stop && (flags.worktree || positionals.length)))
+    throw new Error('--stop takes no target, and --daemon does not take --from')
   const port = flags.port === undefined && flags.stop ? (await readState())?.port || 7855 : Number(flags.port ?? 7855)
   if (!Number.isInteger(port) || port < 1 || port > 65535)
     throw new Error('--port must be an integer between 1 and 65535')
+  // Same page as the foreground command; fails on a malformed target before the daemon starts.
+  const page = flags.stop ? '/' : browserPath(await pageFor(process.cwd(), positionals[0], !!flags.worktree))
   let state = await running(port)
   if (flags.stop)
     return stop(state, port)
@@ -158,5 +163,5 @@ export async function routeDaemon(flags: {
         throw error
     }
   }
-  await launch(state, !!flags['no-open'])
+  await launch(state, page, !!flags['no-open'])
 }
