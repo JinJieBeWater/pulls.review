@@ -8,7 +8,7 @@ import { setTimeout as delay } from 'node:timers/promises'
 import { open as openBrowser } from 'devframe/utils/open'
 import * as v from 'valibot'
 import { browserPath, pageFor } from '../page'
-import { DaemonMessageSchema, LaunchSchema, StatusSchema } from './schema'
+import { DaemonMessageSchema, LaunchSchema, PWA_PROTOCOL, StatusSchema } from './schema'
 import { COOKIE } from './security'
 import { daemonOrigin, readState, stateDir } from './state'
 
@@ -100,19 +100,22 @@ async function start(port: number): Promise<DaemonState> {
   }
 }
 
-async function launch(state: DaemonState, page: string, noOpen: boolean): Promise<void> {
-  const response = await control(state, '/api/launch', { path: process.cwd(), page, show: !noOpen })
+async function launch(state: DaemonState, page: string, noOpen: boolean, pwa: boolean): Promise<void> {
+  const response = await control(state, '/api/launch', { path: process.cwd(), page })
   if (response.status === 422)
     throw new Error('Not a git repository: run pulls.review -d inside one')
   if (!response.ok)
     throw new Error('Could not register current git worktree')
-  const { url, path, shown } = v.parse(LaunchSchema, await response.json())
+  const { url, path } = v.parse(LaunchSchema, await response.json())
+  const token = new URL(url).searchParams.get('token')
+  if (pwa && !token)
+    throw new Error('Daemon launch URL has no credential')
+  const target = pwa ? `${PWA_PROTOCOL}:${token}` : url
   process.stdout.write(`pulls.review daemon: ${daemonOrigin(state.port)}${path}\n`)
   if (noOpen)
-    process.stderr.write(`One-time login credential (expires in 60 seconds): ${url}\n`)
-  // An open shell has shown the page, so no new browser tab. A page can't raise its own window: that one stays where it is.
-  else if (!shown)
-    await openBrowser(url)
+    process.stderr.write(`One-time login credential (expires in 60 seconds): ${target}\n`)
+  else
+    await openBrowser(target)
 }
 
 async function stop(state: DaemonState | undefined, port: number): Promise<void> {
@@ -141,19 +144,22 @@ export async function routeDaemon(flags: {
   'worktree'?: boolean
   'from'?: string
   'no-open'?: boolean
+  'pwa'?: boolean
 }, positionals: string[]): Promise<void> {
+  if (flags.pwa && !flags.daemon)
+    throw new Error('--pwa requires --daemon')
   if (flags.daemon && flags.stop)
     throw new Error('--daemon and --stop cannot be combined')
   if (flags.from !== undefined || (flags.stop && (flags.worktree || positionals.length)))
     throw new Error('--stop takes no target, and --daemon does not take --from')
-  const port = flags.port === undefined && flags.stop ? (await readState())?.port || 7855 : Number(flags.port ?? 7855)
+  const port = Number(flags.port ?? (flags.stop ? (await readState())?.port : undefined) ?? 7855)
   if (!Number.isInteger(port) || port < 1 || port > 65535)
     throw new Error('--port must be an integer between 1 and 65535')
-  // Same page as the foreground command; fails on a malformed target before the daemon starts.
-  const page = flags.stop ? '/' : browserPath(await pageFor(process.cwd(), positionals[0], !!flags.worktree))
   let state = await running(port)
   if (flags.stop)
     return stop(state, port)
+  // Same page as the foreground command; fails on a malformed target before the daemon starts.
+  const page = browserPath(await pageFor(process.cwd(), positionals[0], !!flags.worktree))
   if (!state) {
     try {
       state = await start(port)
@@ -164,5 +170,5 @@ export async function routeDaemon(flags: {
         throw error
     }
   }
-  await launch(state, page, !!flags['no-open'])
+  await launch(state, page, !!flags['no-open'], !!flags.pwa)
 }

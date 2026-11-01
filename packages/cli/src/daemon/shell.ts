@@ -1,6 +1,7 @@
 import { readFile, stat } from 'node:fs/promises'
 import { join, resolve, sep } from 'node:path'
 import { serveStatic } from 'h3'
+import { PWA_PROTOCOL } from './schema'
 
 /** What makes the tab shell (`/`) installable as an app; public, like any site's. */
 export const MANIFEST = JSON.stringify({
@@ -10,6 +11,8 @@ export const MANIFEST = JSON.stringify({
   start_url: '/',
   scope: '/',
   display: 'standalone',
+  launch_handler: { client_mode: 'focus-existing' },
+  protocol_handlers: [{ protocol: PWA_PROTOCOL, url: '/login?token=%s' }],
   background_color: '#ffffff',
   theme_color: '#ffffff',
   icons: [{ src: '/favicon.svg', sizes: 'any', type: 'image/svg+xml', purpose: 'any' }],
