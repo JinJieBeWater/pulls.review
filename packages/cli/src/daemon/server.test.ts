@@ -95,6 +95,9 @@ it('protects every HTTP surface, exchanges launch links once and never logs cred
   expect(login.headers.get('referrer-policy')).toBe('no-referrer')
   expect((await call(loginPath, {}, false)).status).toBe(401)
   expect(JSON.stringify(log.mock.calls)).not.toContain(new URL(url).searchParams.get('token'))
+  const page = await call('/api/launch', { method: 'POST', headers: { origin: 'http://127.0.0.1:7855' }, body: JSON.stringify({ path: '/repo', page: '/branch/fix' }) })
+  expect((await page.json()).path).toBe('/r/main-123/branch/fix')
+  expect((await call('/api/launch', { method: 'POST', headers: { origin: 'http://127.0.0.1:7855' }, body: JSON.stringify({ path: '/repo', page: 'evil.test' }) })).status).toBe(400)
 })
 
 it('refuses launches outside a checkout and serves the tab shell with only its own files', async () => {

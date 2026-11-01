@@ -12,6 +12,8 @@ import { COOKIE, createLaunchTokens, hasSession, requestGuard } from './security
 import { createShellFiles, MANIFEST, SERVICE_WORKER } from './shell'
 
 const pathSchema = v.object({ path: v.pipe(v.string(), v.minLength(1), v.maxLength(4096)) })
+// The page inside the worktree's review, as `pageFor` picks it.
+const launchSchema = v.object({ ...pathSchema.entries, page: v.optional(v.pipe(v.string(), v.startsWith('/'), v.maxLength(4096)), '/') })
 
 export function createDaemonApp(options: {
   origin: string
@@ -123,14 +125,14 @@ export function createDaemonApp(options: {
     return { removed: true }
   })
   app.post('/api/launch', async (event) => {
-    const parsed = v.safeParse(pathSchema, await readBody(event))
+    const parsed = v.safeParse(launchSchema, await readBody(event))
     if (!parsed.success)
       return new Response('A worktree path is required', { status: 400 })
     const tree = await registry.addCurrent(parsed.output.path)
     if (!tree)
       return new Response('Not a git repository', { status: 422 })
     void commits.rescan()
-    const path = `/r/${tree.id}/`
+    const path = `/r/${tree.id}${parsed.output.page}`
     const token = launches.issue(path)
     return { url: `${origin}/login?token=${token}`, path }
   })

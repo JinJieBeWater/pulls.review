@@ -24,6 +24,12 @@ export function showWorktree(state: Tabs, url: string): Tabs {
   return tab ? { ...state, active: tab.key } : openTab(state, url)
 }
 
+/** Selects a tab already at `url`, or opens one: a launch asks for that page, not wherever a tab was left. */
+export function showPage(state: Tabs, url: string): Tabs {
+  const tab = state.tabs.find(tab => tab.url === url)
+  return tab ? { ...state, active: tab.key } : openTab(state, url)
+}
+
 /** Closing the active tab selects its right neighbour, else its left one. */
 export function closeTab(state: Tabs, key: number): Tabs {
   const index = state.tabs.findIndex(tab => tab.key === key)
