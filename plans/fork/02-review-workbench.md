@@ -113,7 +113,7 @@ Wording (all 12 locales, x18n):
   reuses it after a restart; the cookie gets a long `Max-Age`. `HttpOnly`,
   `SameSite=Strict`, the Origin and Host checks and loopback-only stay. Without
   this, an installed app opened from the Dock after any restart shows
-  `Run pulls.review -d to sign in`.
+  `Run jin.review -d to sign in`.
 - **PWA**: a manifest and icons, `start_url` `/` (the shell), `display: standalone`.
   `127.0.0.1` is a secure origin, so Chrome installs it. The manifest declares
   `launch_handler.client_mode: focus-existing` and a `web+pullsreview` protocol

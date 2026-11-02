@@ -69,8 +69,10 @@ These limit new work only; nothing upstream already does is removed.
   Without `--pwa`, it opens an HTTP sign-in link in the default browser. `--no-open`
   prints the selected launch credential instead of opening it.
 - All daemon state shares upstream's `~/.pulls.review/` with `devframe/`.
-- Not published. After building, `bun link` in `packages/cli` puts the fork's
-  `pulls.review` on `PATH`.
+- Published to npm as `jin.review` (command `jin.review`, version
+  `<upstream>-fork.<n>`) by `packages/cli/src/daemon/npm/publish.mjs`, which builds
+  into a temporary folder with `@pulls.review/core` bundled and leaves upstream's
+  `package.json` alone. The daemon's messages and the PWA name use that command.
 
 ## Flow
 
