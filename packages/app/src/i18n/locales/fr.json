@@ -461,7 +461,7 @@
       "search": "Filtrer les dépôts…",
       "noMatch": "Aucun dépôt correspondant",
       "detached": "(détaché)",
-      "failure": "La requête a échoué. Relancez pulls.review -d si votre session a expiré.",
+      "failure": "La requête a échoué. Relancez jin.review -d si votre session a expiré.",
       "requestFailed": "La requête a échoué. Réessayez.",
       "invalidPath": "Impossible d’enregistrer ce chemin comme dépôt Git."
     },

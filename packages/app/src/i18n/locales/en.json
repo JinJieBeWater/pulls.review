@@ -470,7 +470,7 @@
       "search": "Filter repositories…",
       "noMatch": "No matching repository",
       "detached": "(detached)",
-      "failure": "Request failed. Run pulls.review -d again if your session expired.",
+      "failure": "Request failed. Run jin.review -d again if your session expired.",
       "requestFailed": "Request failed. Try again.",
       "invalidPath": "Cannot register this path as a Git repository."
     },

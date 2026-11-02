@@ -461,7 +461,7 @@
       "search": "저장소 필터…",
       "noMatch": "일치하는 저장소가 없습니다",
       "detached": "(분리됨)",
-      "failure": "요청에 실패했습니다. 세션이 만료되었다면 pulls.review -d를 다시 실행하세요.",
+      "failure": "요청에 실패했습니다. 세션이 만료되었다면 jin.review -d를 다시 실행하세요.",
       "requestFailed": "요청에 실패했습니다. 다시 시도하세요.",
       "invalidPath": "이 경로를 Git 저장소로 등록할 수 없습니다."
     },

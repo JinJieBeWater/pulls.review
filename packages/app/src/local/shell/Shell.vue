@@ -345,7 +345,7 @@ const model = computed({
         <template #hint>
           <i18n-t keypath="local.shell.offlineHint" tag="span" scope="global">
             <template #command>
-              <code class="rounded bg-code px-1 font-mono">pulls.review -d</code>
+              <code class="rounded bg-code px-1 font-mono">jin.review -d</code>
             </template>
           </i18n-t>
         </template>
@@ -354,7 +354,7 @@ const model = computed({
         <template #hint>
           <i18n-t keypath="local.shell.signedOutHint" tag="span" scope="global">
             <template #command>
-              <code class="rounded bg-code px-1 font-mono">pulls.review -d</code>
+              <code class="rounded bg-code px-1 font-mono">jin.review -d</code>
             </template>
           </i18n-t>
         </template>

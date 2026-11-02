@@ -8,7 +8,7 @@ import { setTimeout as delay } from 'node:timers/promises'
 import { open as openBrowser } from 'devframe/utils/open'
 import * as v from 'valibot'
 import { browserPath, pageFor } from '../page'
-import { DaemonMessageSchema, LaunchSchema, PWA_PROTOCOL, StatusSchema } from './schema'
+import { COMMAND, DaemonMessageSchema, LaunchSchema, PWA_PROTOCOL, StatusSchema } from './schema'
 import { COOKIE } from './security'
 import { daemonOrigin, readState, stateDir } from './state'
 
@@ -103,7 +103,7 @@ async function start(port: number): Promise<DaemonState> {
 async function launch(state: DaemonState, page: string, noOpen: boolean, pwa: boolean): Promise<void> {
   const response = await control(state, '/api/launch', { path: process.cwd(), page })
   if (response.status === 422)
-    throw new Error('Not a git repository: run pulls.review -d inside one')
+    throw new Error(`Not a git repository: run ${COMMAND} -d inside one`)
   if (!response.ok)
     throw new Error('Could not register current git worktree')
   const { url, path } = v.parse(LaunchSchema, await response.json())

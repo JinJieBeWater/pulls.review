@@ -1,12 +1,12 @@
 import { readFile, stat } from 'node:fs/promises'
 import { join, resolve, sep } from 'node:path'
 import { serveStatic } from 'h3'
-import { PWA_PROTOCOL } from './schema'
+import { COMMAND, PWA_PROTOCOL } from './schema'
 
 /** What makes the tab shell (`/`) installable as an app; public, like any site's. */
 export const MANIFEST = JSON.stringify({
-  name: 'pulls.review',
-  short_name: 'pulls.review',
+  name: COMMAND,
+  short_name: COMMAND,
   description: 'Review local changes, grouped and summarized.',
   start_url: '/',
   scope: '/',

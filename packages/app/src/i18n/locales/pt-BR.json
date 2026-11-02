@@ -461,7 +461,7 @@
       "search": "Filtrar repositórios…",
       "noMatch": "Nenhum repositório correspondente",
       "detached": "(desanexado)",
-      "failure": "A solicitação falhou. Execute pulls.review -d novamente se sua sessão expirou.",
+      "failure": "A solicitação falhou. Execute jin.review -d novamente se sua sessão expirou.",
       "requestFailed": "A solicitação falhou. Tente novamente.",
       "invalidPath": "Não é possível registrar este caminho como repositório Git."
     },

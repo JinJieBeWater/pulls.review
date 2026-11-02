@@ -461,7 +461,7 @@
       "search": "Filtra repository…",
       "noMatch": "Nessun repository corrispondente",
       "detached": "(scollegato)",
-      "failure": "Richiesta non riuscita. Esegui di nuovo pulls.review -d se la sessione è scaduta.",
+      "failure": "Richiesta non riuscita. Esegui di nuovo jin.review -d se la sessione è scaduta.",
       "requestFailed": "Richiesta non riuscita. Riprova.",
       "invalidPath": "Impossibile registrare questo percorso come repository Git."
     },

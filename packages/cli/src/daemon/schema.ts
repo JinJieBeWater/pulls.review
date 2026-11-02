@@ -1,5 +1,7 @@
 import * as v from 'valibot'
 
+/** The fork's command on npm (`npm/publish.mjs`), apart from upstream's `pulls.review` so both can be installed. */
+export const COMMAND = 'jin.review'
 export const PWA_PROTOCOL = 'web+pullsreview'
 
 export const PortSchema = v.pipe(v.number(), v.integer(), v.minValue(1), v.maxValue(65535))

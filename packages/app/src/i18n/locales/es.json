@@ -461,7 +461,7 @@
       "search": "Filtrar repositorios…",
       "noMatch": "Ningún repositorio coincide",
       "detached": "(separado)",
-      "failure": "La solicitud falló. Ejecuta pulls.review -d de nuevo si tu sesión ha caducado.",
+      "failure": "La solicitud falló. Ejecuta jin.review -d de nuevo si tu sesión ha caducado.",
       "requestFailed": "La solicitud falló. Inténtalo de nuevo.",
       "invalidPath": "No se puede registrar esta ruta como repositorio Git."
     },

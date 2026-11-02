@@ -5,7 +5,7 @@ import devframe from './devframe'
 import { browserPath, pageFor, sharedAnalysisQuery } from './page'
 import { createAppWithRefRoutes } from './spa'
 
-const HELP = `Usage: pulls.review [target] [options]
+const HELP = `Usage: jin.review [target] [options]
 
 Reviews local git changes - or any GitHub pull request - in the browser, grouped
 and summarized. Run it inside a git repository. The target only picks the page
@@ -28,7 +28,7 @@ Code, OpenCode, Pi) when "Local agent" is the provider in Settings.
 
 Options:
   -d, --daemon    open this worktree in the background multi-repo server
-  --pwa           with --daemon, open the installed pulls.review app
+  --pwa           with --daemon, open the installed jin.review app
   --stop          stop the daemon and its worktree servers
   --worktree      open the uncommitted changes against HEAD
   --from <login>  with a GitHub pull request, load the AI analysis <login> shared

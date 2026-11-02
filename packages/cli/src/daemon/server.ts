@@ -8,7 +8,7 @@ import { bodyLimit, H3, HTTPError, proxyRequest, readBody } from 'h3'
 import * as v from 'valibot'
 import { routeId } from './proxy'
 import { worktrees } from './registry'
-import { PWA_PROTOCOL } from './schema'
+import { COMMAND, PWA_PROTOCOL } from './schema'
 import { COOKIE, createLaunchTokens, hasSession, requestGuard } from './security'
 import { createShellFiles, MANIFEST, SERVICE_WORKER } from './shell'
 
@@ -64,7 +64,7 @@ export function createDaemonApp(options: {
     if (event.url.pathname === '/manifest.webmanifest' && event.req.method === 'GET')
       return new Response(MANIFEST, { headers: { 'Content-Type': 'application/manifest+json' } })
     if (!hasSession(event.req.headers, session))
-      return new Response('Run pulls.review -d to sign in', { status: 401 })
+      return new Response(`Run ${COMMAND} -d to sign in`, { status: 401 })
     return next()
   })
   app.get('/api/status', () => ({ pid: process.pid }))

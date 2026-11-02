@@ -461,7 +461,7 @@
       "search": "篩選儲存庫…",
       "noMatch": "沒有符合的儲存庫",
       "detached": "（分離 HEAD）",
-      "failure": "請求失敗。如果工作階段已過期，請重新執行 pulls.review -d。",
+      "failure": "請求失敗。如果工作階段已過期，請重新執行 jin.review -d。",
       "requestFailed": "請求失敗，請重試。",
       "invalidPath": "無法將此路徑登記為 Git 儲存庫。"
     },
