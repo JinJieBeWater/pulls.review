@@ -1,7 +1,7 @@
 import type { AgentMessage } from '@earendil-works/pi-agent-core'
 import type { DiffCache, LlmSession } from '@pulls.review/core/cache'
 import type { AgentStreamEvent } from '@pulls.review/core/local-rpc'
-import type { AgentSessionRef, GroupedResult } from '@pulls.review/core/types'
+import type { AgentSessionRef, AnalyzeProgress, GroupedResult } from '@pulls.review/core/types'
 import type { AgentChatOptions } from './chat'
 import type { AgentRunOptions } from './run'
 import { mkdir } from 'node:fs/promises'
@@ -9,7 +9,7 @@ import { join } from 'node:path'
 import { LOCAL_AGENT_NAMES } from '@pulls.review/core/analyze'
 import { AGENT_SESSION_LOST, LOCAL_RPC, LocalAgentInfoSchema } from '@pulls.review/core/local-rpc'
 import { LOCALES } from '@pulls.review/core/locales'
-import { AgentSessionRefSchema, DiffsPayloadSchema } from '@pulls.review/core/types'
+import { AgentSessionRefSchema, AnalyzeProgressSchema, DiffsPayloadSchema } from '@pulls.review/core/types'
 import { defineRpcFunction } from 'devframe'
 import * as v from 'valibot'
 import { runAgentAnalysis } from './analyze'
@@ -67,6 +67,8 @@ export function agentRpcFunctions({ cwd, patchDir, channel, diffs }: AgentRpcOpt
   const running = new Map<string, AbortController>()
   /** Analyses by the cache key of their diff, so a reloaded page or another tab follows the same run. */
   const analyses = new Map<string, string>()
+  /** The latest progress of a keyed run, or why its last run failed, for a caller that doesn't follow the stream. */
+  const states = new Map<string, { progress?: AnalyzeProgress, error?: string }>()
   let detected: Promise<v.InferOutput<typeof LocalAgentInfoSchema>[]> | undefined
 
   /** Saves a finished analysis as the page would, for when no page is left to. */
@@ -83,6 +85,14 @@ export function agentRpcFunctions({ cwd, patchDir, channel, diffs }: AgentRpcOpt
     }
   }
 
+  /** Saves a keyed run's outcome before forgetting the run, so a page that finds no run finds its result; a failure stays to report. */
+  async function finish(key: string, outcome: Outcome) {
+    await save(key, outcome)
+    analyses.delete(key)
+    if (!states.get(key)?.error)
+      states.delete(key)
+  }
+
   /**
    * Starts `run` on a fresh stream and returns its id at once; the stream carries the outcome.
    * Only `agent-abort` stops it - a page leaving doesn't, so it can come back and follow it again.
@@ -92,9 +102,18 @@ export function agentRpcFunctions({ cwd, patchDir, channel, diffs }: AgentRpcOpt
     const sink = channel.start()
     const controller = new AbortController()
     running.set(sink.id, controller)
-    if (key)
+    if (key) {
       analyses.set(key, sink.id)
+      states.set(key, {})
+    }
     const outcome: Outcome = { messages: [] }
+    const write = (event: AgentStreamEvent) => {
+      if (key && event.kind === 'progress')
+        states.set(key, { progress: event.progress })
+      else if (key && event.kind === 'end' && event.stopReason === 'error')
+        states.set(key, { error: event.error })
+      sink.write(event)
+    }
 
     void (async () => {
       // A GitHub diff is analyzed from its patch alone, not in whatever is checked out here.
@@ -113,25 +132,22 @@ export function agentRpcFunctions({ cwd, patchDir, channel, diffs }: AgentRpcOpt
           patchDir,
           emit: (event) => {
             record(outcome, event)
-            sink.write(event)
+            write(event)
           },
           signal: controller.signal,
         })
       }
       catch (error) {
         if (controller.signal.aborted)
-          sink.write({ kind: 'end', stopReason: 'aborted' })
+          write({ kind: 'end', stopReason: 'aborted' })
         else if (error instanceof AgentRunError)
-          sink.write({ kind: 'end', stopReason: 'error', error: error.message, code: error.code === AGENT_SESSION_LOST ? error.code : undefined })
+          write({ kind: 'end', stopReason: 'error', error: error.message, code: error.code === AGENT_SESSION_LOST ? error.code : undefined })
         else
-          sink.write({ kind: 'end', stopReason: 'error', error: error instanceof Error ? error.message : String(error) })
+          write({ kind: 'end', stopReason: 'error', error: error instanceof Error ? error.message : String(error) })
       }
       finally {
-        // Saved before the run is forgotten, so a page that finds no run finds its result.
-        if (key) {
-          await save(key, outcome)
-          analyses.delete(key)
-        }
+        if (key)
+          await finish(key, outcome)
         running.delete(sink.id)
         sink.close()
       }
@@ -161,8 +177,8 @@ export function agentRpcFunctions({ cwd, patchDir, channel, diffs }: AgentRpcOpt
       name: LOCAL_RPC.agentRunning,
       type: 'query',
       args: [v.object({ key: v.string() })],
-      returns: v.object({ streamId: v.optional(v.string()) }),
-      handler: ({ key }) => ({ streamId: analyses.get(key) }),
+      returns: v.object({ streamId: v.optional(v.string()), progress: v.optional(AnalyzeProgressSchema), error: v.optional(v.string()) }),
+      handler: ({ key }) => ({ streamId: analyses.get(key), ...states.get(key) }),
     }),
     defineRpcFunction({
       name: LOCAL_RPC.agentChat,

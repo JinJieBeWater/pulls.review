@@ -156,6 +156,23 @@ describe('agent RPC', () => {
     expect(stream(aborted.streamId).events.at(-1)).toEqual({ kind: 'end', stopReason: 'aborted' })
   })
 
+  it('forgets a keyed run that finished, and remembers why one failed', async () => {
+    fake.replay('claude-analysis.jsonl')
+    const { channel, stream } = memoryChannel()
+    const functions = agentRpcFunctions({ cwd: dir, patchDir: join(dir, 'patches'), channel, diffs: cache.diffs })
+    const running = await call(functions, LOCAL_RPC.agentAnalyze, { agent: 'claude', diff, locale: 'en', key: 'k' }) as { streamId: string }
+    await stream(running.streamId).done
+    // Its progress went out while it ran; none of it is left behind.
+    expect(stream(running.streamId).events.some(event => event.kind === 'progress')).toBe(true)
+    expect(await call(functions, LOCAL_RPC.agentRunning, { key: 'k' })).toEqual({ streamId: undefined })
+
+    fake.replay()
+    fake.exitWith(1, 'boom')
+    const failed = await call(functions, LOCAL_RPC.agentAnalyze, { agent: 'claude', diff, locale: 'en', key: 'k' }) as { streamId: string }
+    await stream(failed.streamId).done
+    expect(await call(functions, LOCAL_RPC.agentRunning, { key: 'k' })).toEqual({ streamId: undefined, error: expect.stringContaining('boom') })
+  })
+
   it('carries the lost-session code so the browser can offer re-analysis', async () => {
     fake.replay()
     fake.exitWith(1, 'Error: Session not found')
