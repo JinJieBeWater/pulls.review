@@ -41,7 +41,10 @@ it('starts one server per worktree with a private IPC token and the correct cwd'
   })
   expect(send).toHaveBeenCalledWith({ token: expect.stringMatching(/^[a-f0-9]{64}$/), basePath: '/r/repo-123/' })
   first.emit('message', { type: 'ready', port: 1234 })
-  expect(await ready).toEqual({ port: 1234, token: send.mock.calls[0][0].token })
+  const server = await ready
+  expect(server).toEqual({ port: 1234, token: send.mock.calls[0][0].token, send: expect.any(Function) })
+  server.send({ type: 'analyze', page: '/worktree', agent: 'pi', model: '', locale: 'en' })
+  expect(send).toHaveBeenLastCalledWith({ type: 'analyze', page: '/worktree', agent: 'pi', model: '', locale: 'en' })
   first.emit('exit', 0)
   expect(process.kill).toHaveBeenCalledWith(-12345, 'SIGKILL')
 })

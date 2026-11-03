@@ -13,6 +13,7 @@ import { upgradeProxy } from './proxy'
 import { atomicWrite, createRepoRegistry } from './registry'
 import { DaemonStartSchema } from './schema'
 import { createDaemonApp } from './server'
+import { createSettingsStore } from './settings'
 import { daemonOrigin, loadSession, pidFile, readState, stateDir } from './state'
 
 process.umask(0o077)
@@ -36,6 +37,7 @@ process.once('message', async (message: unknown) => {
       registry,
       children,
       commits,
+      settings: createSettingsStore(join(stateDir(), 'shared-settings.json')),
       connections,
       stop: () => { void stop() },
       log,

@@ -1,5 +1,5 @@
 import type { ChildProcess } from 'node:child_process'
-import type { Worktree } from './schema'
+import type { Worktree, WorktreeAnalyze } from './schema'
 import { fork } from 'node:child_process'
 import process from 'node:process'
 import { setTimeout as delay } from 'node:timers/promises'
@@ -10,6 +10,7 @@ import { secret } from './security'
 export interface WorktreeServer {
   port: number
   token: string
+  send: (message: WorktreeAnalyze) => void
 }
 
 export function signalGroup(child: ChildProcess, signal: NodeJS.Signals): void {
@@ -69,7 +70,7 @@ export function createWorktreeServers() {
             return
           }
           clearTimeout(timeout)
-          resolve({ port: message.port, token })
+          resolve({ port: message.port, token, send: request => child.send(request) })
         }
         catch (error) {
           signalGroup(child, 'SIGKILL')

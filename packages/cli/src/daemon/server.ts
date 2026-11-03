@@ -3,6 +3,8 @@ import type { WorktreeServers } from './children'
 import type { CommitWatcher } from './commits'
 import type { AccessLog } from './proxy'
 import type { RepoRegistry } from './registry'
+import type { Worktree } from './schema'
+import type { SettingsStore } from './settings'
 import process from 'node:process'
 import { bodyLimit, H3, HTTPError, proxyRequest, readBody } from 'h3'
 import * as v from 'valibot'
@@ -10,6 +12,7 @@ import { routeId } from './proxy'
 import { worktrees } from './registry'
 import { COMMAND, PWA_PROTOCOL } from './schema'
 import { COOKIE, createLaunchTokens, hasSession, requestGuard } from './security'
+import { agentChoice, SharedSettingsSchema } from './settings'
 import { createShellFiles, MANIFEST, SERVICE_WORKER } from './shell'
 
 const pathSchema = v.object({ path: v.pipe(v.string(), v.minLength(1), v.maxLength(4096)) })
@@ -24,13 +27,21 @@ export function createDaemonApp(options: {
   registry: Pick<RepoRegistry, 'repos' | 'add' | 'addCurrent' | 'remove' | 'find'>
   children: Pick<WorktreeServers, 'get'>
   commits: Pick<CommitWatcher, 'rescan' | 'subscribe'>
+  settings: SettingsStore
   connections: Map<Duplex, string>
   stop: () => void
   log: AccessLog
 }): H3 {
-  const { origin, session, registry, children, commits, connections, stop, log } = options
+  const { origin, session, registry, children, commits, settings, connections, stop, log } = options
   const launches = createLaunchTokens()
   const shell = createShellFiles(options.client)
+
+  /** `--analyze` with a local agent picked: the worktree server starts the run, so it needs no page to. */
+  async function analyze(tree: Worktree, page: string) {
+    const choice = agentChoice(await settings.read())
+    if (choice)
+      (await children.get(tree)).send({ type: 'analyze', page: page.split('?')[0]!, ...choice })
+  }
   const app = new H3({
     onError: error => new Response('Daemon request failed', { status: error.status }),
     onResponse(response, event) {
@@ -74,6 +85,14 @@ export function createDaemonApp(options: {
     return { stopping: true }
   })
   app.get('/api/repos', () => registry.repos())
+  app.get('/api/settings', () => settings.read())
+  app.put('/api/settings', async (event) => {
+    const parsed = v.safeParse(SharedSettingsSchema, await readBody(event))
+    if (!parsed.success)
+      return new Response('Invalid settings', { status: 400 })
+    await settings.write(parsed.output)
+    return parsed.output
+  })
   // New commits in any registered worktree, for the shell's dots and notifications.
   app.get('/api/events', () => {
     const encoder = new TextEncoder()
@@ -140,6 +159,8 @@ export function createDaemonApp(options: {
       return new Response('Not a git repository', { status: 422 })
     void commits.rescan()
     const path = `/r/${tree.id}${parsed.output.page}`
+    if (new URL(path, origin).searchParams.has('analyze'))
+      void analyze(tree, parsed.output.page).catch(error => process.stderr.write(`Could not start the analysis: ${error instanceof Error ? error.message : error}\n`))
     const token = launches.issue(path)
     return { url: `${origin}/login?token=${token}`, path }
   })

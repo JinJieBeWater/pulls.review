@@ -1,3 +1,5 @@
+import { LOCAL_AGENT_NAMES } from '@pulls.review/core/analyze'
+import { LOCALES } from '@pulls.review/core/locales'
 import * as v from 'valibot'
 
 /** The fork's command on npm (`npm/publish.mjs`), apart from upstream's `pulls.review` so both can be installed. */
@@ -27,6 +29,17 @@ export const WorktreeStartSchema = v.object({
   token: SecretSchema,
   basePath: v.pipe(v.string(), v.regex(/^\/r\/[\w-]+\/$/)),
 })
+export const LocaleSchema = v.picklist(LOCALES.map(entry => entry.code))
+
+/** The daemon asks a worktree server to analyze a review page (plans/fork/03). */
+export const WorktreeAnalyzeSchema = v.object({
+  type: v.literal('analyze'),
+  page: v.pipe(v.string(), v.startsWith('/')),
+  agent: v.picklist(LOCAL_AGENT_NAMES),
+  model: v.string(),
+  locale: LocaleSchema,
+})
+export type WorktreeAnalyze = v.InferOutput<typeof WorktreeAnalyzeSchema>
 const StartupFailureSchema = v.object({ type: v.literal('error'), message: v.string() })
 
 export const DaemonMessageSchema = v.variant('type', [

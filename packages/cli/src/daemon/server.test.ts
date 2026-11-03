@@ -2,6 +2,7 @@ import type { Server } from 'node:http'
 import type { Socket } from 'node:net'
 import type { CommitEvent } from './commits'
 import type { Worktree } from './schema'
+import type { SharedSettings } from './settings'
 import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
 import { rm } from 'node:fs/promises'
 import { createServer, request } from 'node:http'
@@ -36,7 +37,10 @@ async function listen(server: Server): Promise<number> {
 async function fixture(port = 1) {
   const tree = { id: 'main-123', path: '/repo', branch: 'main' }
   const registry = { repos: vi.fn(async () => [{ path: '/repo' }]), add: vi.fn(async () => tree), addCurrent: vi.fn(async (): Promise<Worktree | undefined> => tree), find: vi.fn(async (_id: string): Promise<Worktree | undefined> => tree), remove: vi.fn() }
-  const children = { get: vi.fn(async () => ({ port, token: 'server-only-token' })) }
+  const send = vi.fn()
+  const children = { get: vi.fn(async () => ({ port, token: 'server-only-token', send })) }
+  let stored: SharedSettings = {}
+  const settings = { read: vi.fn(async () => stored), write: vi.fn(async (next: SharedSettings) => void (stored = next)) }
   const log = vi.fn()
   const listeners = new Set<(event: CommitEvent) => void>()
   const commits = {
@@ -62,6 +66,7 @@ async function fixture(port = 1) {
     registry,
     children,
     commits,
+    settings,
     connections: new Map<PassThrough, string>(),
   }
   const app = createDaemonApp(options)
@@ -73,12 +78,12 @@ async function fixture(port = 1) {
       ...init.headers,
     },
   }))
-  return { app, options, call, registry, children, commits, listeners, log }
+  return { app, options, call, registry, children, send, settings, commits, listeners, log }
 }
 
 it('protects every HTTP surface, exchanges launch links once and never logs credentials', async () => {
   const { call, log } = await fixture()
-  for (const path of ['/', '/sw.js', '/assets/shell.js', '/api/events', '/api/status', '/api/repos', '/r/main-123/', '/r/main-123/__connection.json'])
+  for (const path of ['/', '/sw.js', '/assets/shell.js', '/api/events', '/api/status', '/api/repos', '/api/settings', '/r/main-123/', '/r/main-123/__connection.json'])
     expect((await call(path, {}, false)).status).toBe(401)
   expect((await call('/manifest.webmanifest', {}, false)).status).toBe(200)
   expect((await call('/', { headers: { host: 'evil.test' } })).status).toBe(403)
@@ -118,6 +123,27 @@ it('refuses launches outside a checkout and serves the tab shell with only its o
   expect(manifest.protocol_handlers).toEqual([{ protocol: 'web+pullsreview', url: '/login?token=%s' }])
   for (const path of ['/assets/missing.js', '/assets/%2e%2e%2f%2e%2e%2fpulls-daemon-secret.txt', '/assets/..%2f..%2fpulls-daemon-secret.txt'])
     expect((await call(path)).status).toBe(404)
+})
+
+it('keeps the shared settings without API keys, and has a picked local agent analyze a launched ?analyze page', async () => {
+  const { call, options, send, settings } = await fixture()
+  const write = (body: unknown) => call('/api/settings', { method: 'PUT', headers: { origin: options.origin }, body: JSON.stringify(body) })
+  expect(await (await call('/api/settings')).json()).toEqual({})
+  expect((await write({ llm: { agent: 'nope' } })).status).toBe(400)
+  await write({ locale: 'zh-CN', llm: { provider: 'gateway', gatewayToken: 'secret', agent: 'pi', agentModel: '' } })
+  expect(await (await call('/api/settings')).json()).toEqual({ locale: 'zh-CN', llm: { provider: 'gateway', agent: 'pi', agentModel: '' } })
+  expect(JSON.stringify(settings.write.mock.calls)).not.toContain('secret')
+
+  const launch = (page: string) => call('/api/launch', { method: 'POST', headers: { origin: options.origin }, body: JSON.stringify({ path: '/repo', page }) })
+  await launch('/branch/fix?analyze')
+  await vi.waitFor(() => expect(settings.read).toHaveBeenCalledTimes(3))
+  expect(send).not.toHaveBeenCalled()
+
+  await write({ locale: 'zh-CN', llm: { provider: 'local-agent', agent: 'pi', agentModel: 'm' } })
+  await launch('/branch/fix')
+  await launch('/branch/fix?analyze')
+  await vi.waitFor(() => expect(send).toHaveBeenCalledWith({ type: 'analyze', page: '/branch/fix', agent: 'pi', model: 'm', locale: 'zh-CN' }))
+  expect(send).toHaveBeenCalledTimes(1)
 })
 
 it('exchanges a PWA launch token for a cookie and page without navigating the shell', async () => {
