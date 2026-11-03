@@ -62,8 +62,8 @@ rest of `/api/*`. The body names a worktree by `path` (registered on first use, 
 - `POST /api/review/file` `{ path, page, file, colors }` returns one file's full new
   side, highlighted, for showing the whole file around its hunks.
 - `GET /api/agents` lists the agent CLIs on `PATH` with their versions and model catalogs,
-  as the worktree server's `agent-list` does; the pane writes its pick with the shell's
-  `PUT /api/settings`. Whether the pane starts an analysis by itself is the pane's own
+  as the worktree server's `agent-list` does; the pane writes its pick, and the language the analysis
+  writes in, with the shell's `PUT /api/settings`. Whether the pane starts an analysis by itself is the pane's own
   setting: the app never starts a paid run unasked, so the shared settings don't carry it.
 
 The review's shape:

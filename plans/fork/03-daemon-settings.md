@@ -37,7 +37,8 @@ and [plan 02](./02-review-workbench.md); builds on their daemon, shell and `--an
 
 - `~/.pulls.review/shared-settings.json` (written atomically, 0600) holds `locale` and the
   `llm` settings without the three keys. `GET /api/settings` returns it (`{}` when
-  missing); `PUT /api/settings` validates it against the providers, agent names and
+  missing) with `defaultLocale`, the language an unset `locale` means: the system's, as
+  the app's `detectLocale` picks the browser's; `PUT /api/settings` validates it against the providers, agent names and
   locales the build knows, and replaces it.
 - The shell reads it before mounting and merges it into upstream's `diffs:settings`;
   then it writes the shared fields back on every change, once at start too, so the
