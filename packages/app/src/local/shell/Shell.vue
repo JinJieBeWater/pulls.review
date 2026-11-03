@@ -14,7 +14,7 @@ import LanguageMenu from '../../components/LanguageMenu.vue'
 import { DaemonRequestError, readRepos, readWorktrees } from '../daemon'
 import WorktreeMenu from '../WorktreeMenu.vue'
 import { OPEN_SETTINGS_EVENT, OPEN_WORKTREE_EVENT } from './in-shell'
-import { closeTab, isReviewUrl, openTab, showPage, showWorktree, TabsSchema, worktreeOf } from './tabs'
+import { closeTab, isReviewUrl, openTab, showPage, showWorktree, TabsSchema, tabUrl, worktreeOf } from './tabs'
 
 const state = useLocalStorage<Tabs>('pulls.review:tabs', { tabs: [] }, {
   serializer: {
@@ -231,7 +231,7 @@ function attach(key: number, frame: HTMLIFrameElement) {
     return
   frames.set(key, win)
   const sync = () => {
-    const url = win.location.pathname + win.location.search
+    const url = tabUrl(win.location.pathname + win.location.search)
     // Only the app's own titles: the page's static one shows until the app has loaded.
     if (doc.title.endsWith(SUFFIX))
       titles.set(key, doc.title.slice(0, -SUFFIX.length))

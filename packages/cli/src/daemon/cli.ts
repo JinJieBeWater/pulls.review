@@ -7,7 +7,7 @@ import process from 'node:process'
 import { setTimeout as delay } from 'node:timers/promises'
 import { open as openBrowser } from 'devframe/utils/open'
 import * as v from 'valibot'
-import { browserPath, pageFor } from '../page'
+import { browserPath, pageFor, withAnalyze } from '../page'
 import { COMMAND, DaemonMessageSchema, LaunchSchema, PWA_PROTOCOL, StatusSchema } from './schema'
 import { COOKIE } from './security'
 import { daemonOrigin, readState, stateDir } from './state'
@@ -143,6 +143,7 @@ export async function routeDaemon(flags: {
   'port'?: string
   'worktree'?: boolean
   'from'?: string
+  'analyze'?: boolean
   'no-open'?: boolean
   'pwa'?: boolean
 }, positionals: string[]): Promise<void> {
@@ -159,7 +160,7 @@ export async function routeDaemon(flags: {
   if (flags.stop)
     return stop(state, port)
   // Same page as the foreground command; fails on a malformed target before the daemon starts.
-  const page = browserPath(await pageFor(process.cwd(), positionals[0], !!flags.worktree))
+  const page = browserPath(await pageFor(process.cwd(), positionals[0], !!flags.worktree)) + withAnalyze('', flags.analyze)
   if (!state) {
     try {
       state = await start(port)

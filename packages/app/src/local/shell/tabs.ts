@@ -12,9 +12,18 @@ export type Tabs = v.InferOutput<typeof TabsSchema>
 export const isReviewUrl = (url: string) => v.is(ReviewUrlSchema, url)
 export const worktreeOf = (url: string) => url.match(/^\/r\/([\w-]+)\//)?.[1]
 
+/** The URL a tab keeps: without `?analyze`, which starts one analysis when loaded and must not start another on restore. */
+export function tabUrl(url: string): string {
+  const parsed = new URL(url, 'http://tab')
+  if (!parsed.searchParams.has('analyze'))
+    return url
+  parsed.searchParams.delete('analyze')
+  return parsed.pathname + parsed.search
+}
+
 export function openTab(state: Tabs, url: string): Tabs {
   const key = Math.max(0, ...state.tabs.map(tab => tab.key)) + 1
-  return { tabs: [...state.tabs, { key, url }], active: key }
+  return { tabs: [...state.tabs, { key, url: tabUrl(url) }], active: key }
 }
 
 /** Selects the worktree's first tab, or opens one at `url`. */
@@ -28,7 +37,7 @@ export function showWorktree(state: Tabs, url: string): Tabs {
 export function showPage(state: Tabs, url: string): Tabs {
   const id = worktreeOf(url)
   const tab = state.tabs.find(tab => worktreeOf(tab.url) === id)
-  return tab ? { tabs: state.tabs.map(other => other === tab ? { ...tab, url } : other), active: tab.key } : openTab(state, url)
+  return tab ? { tabs: state.tabs.map(other => other === tab ? { ...tab, url: tabUrl(url) } : other), active: tab.key } : openTab(state, url)
 }
 
 /** Closing the active tab selects its right neighbour, else its left one. */

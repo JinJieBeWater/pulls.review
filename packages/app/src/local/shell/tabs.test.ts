@@ -15,6 +15,12 @@ describe('tabs', () => {
     expect(showPage(state, '/r/c-3/worktree')).toEqual({ tabs: [...state.tabs, { key: 3, url: '/r/c-3/worktree' }], active: 3 })
   })
 
+  it('keeps a launched page without its one-off ?analyze', () => {
+    const state = openTab({ tabs: [] }, '/r/a-1/branch/feat?analyze')
+    expect(state.tabs[0]!.url).toBe('/r/a-1/branch/feat')
+    expect(showPage(state, '/r/a-1/worktree?from=x&analyze').tabs[0]!.url).toBe('/r/a-1/worktree?from=x')
+  })
+
   it('selects a neighbour when the active tab closes', () => {
     const state = ['/r/a-1/', '/r/b-2/', '/r/c-3/'].reduce(openTab, { tabs: [] })
     expect(closeTab({ ...state, active: 2 }, 2).active).toBe(3)
