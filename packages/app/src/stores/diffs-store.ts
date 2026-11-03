@@ -23,6 +23,8 @@ export interface DiffsStoreOptions {
   llm?: LlmRunner
   /** Login from the page's `?from=` query: load that user's shared analysis (see plans/07). */
   from?: string
+  /** The page's `?analyze` query (the CLI's `--analyze`): bring a stale cached diff up to date and start the AI analysis once loaded, unless one is already running or the diff's head already has one. */
+  analyze?: boolean
 }
 
 export function createDiffsStore(source: DiffSource, opts: DiffsStoreOptions): DiffsStore {
@@ -203,9 +205,9 @@ export function createDiffsStore(source: DiffSource, opts: DiffsStoreOptions): D
     try {
       if (await source.fingerprint() === cachedHeadSha)
         return
-      // The user opted into auto-refresh (banner checkbox or Settings): fetch the new
-      // commits silently instead of parking behind the "new commits" banner.
-      if (autoRefresh.value)
+      // The user opted into auto-refresh (banner checkbox or Settings) or asked for an
+      // analysis of the current diff (`?analyze`): fetch the new commits silently instead of parking behind the "new commits" banner.
+      if (autoRefresh.value || opts.analyze)
         await refresh()
       else
         isStale.value = true
@@ -222,12 +224,13 @@ export function createDiffsStore(source: DiffSource, opts: DiffsStoreOptions): D
     try {
       const key = await source.key()
       const cached = await cache.diffs.get(key)
+      let checked: Promise<void> | undefined
       if (cached) {
         cachedReviewData = cached.reviews
         cachedSharedComment = cached.sharedComment
         await cache.diffs.touch(key)
         await install(key, cached)
-        void checkStaleness(cached.headSha)
+        checked = checkStaleness(cached.headSha)
       }
       else {
         await fetchFresh()
@@ -237,7 +240,9 @@ export function createDiffsStore(source: DiffSource, opts: DiffsStoreOptions): D
       void reviews?.load()
       void shared?.discover(opts.from)
       await llmReady
-      void llm.value?.resume()
+      if (opts.analyze)
+        await checked
+      void llm.value?.resume(opts.analyze && (!aiResult.value || aiResult.value.headSha !== diff.value?.head?.sha))
     }
     catch (err) {
       error.value = err instanceof Error ? err : new Error(String(err))

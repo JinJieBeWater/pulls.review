@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { browserPath, pageFor, sharedAnalysisQuery } from './page'
+import { browserPath, pageFor, sharedAnalysisQuery, withAnalyze } from './page'
 
 let repo: string
 
@@ -92,5 +92,13 @@ describe('sharedAnalysisQuery', () => {
 
   it('rejects an empty login', () => {
     expect(() => sharedAnalysisQuery('antfu/diffs#12', '')).toThrow(/needs a GitHub login/)
+  })
+})
+
+describe('withAnalyze', () => {
+  it('asks the page to start the analysis, next to any other query', () => {
+    expect(withAnalyze('', undefined)).toBe('')
+    expect(withAnalyze('', true)).toBe('?analyze')
+    expect(new URL(`/gh/antfu/diffs/12${withAnalyze('?from=octocat', true)}`, 'http://localhost').searchParams.has('analyze')).toBe(true)
   })
 })

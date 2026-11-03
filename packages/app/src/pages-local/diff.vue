@@ -4,6 +4,7 @@ import ActionButton from '@antfu/design/components/Action/ActionButton.vue'
 import FeedbackEmptyState from '@antfu/design/components/Feedback/FeedbackEmptyState.vue'
 import FeedbackLoading from '@antfu/design/components/Feedback/FeedbackLoading.vue'
 import { inject, onMounted } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { useAppContext } from '../app-context'
 import DiffsPage from '../components/diff/DiffsPage.vue'
 import { useCommitView } from '../composables/useCommitView'
@@ -18,9 +19,15 @@ const props = defineProps<{ page: LocalPage }>()
 // Only `installLocal` registers this page, after providing the RPC client.
 const rpc = inject(localRpcKey)!
 const { cache, llm } = useAppContext()
+const route = useRoute()
+
+// `--analyze` asks for one analysis: drop it so a reload doesn't start another.
+const analyze = 'analyze' in route.query
+if (analyze)
+  void useRouter().replace({ query: { ...route.query, analyze: undefined } })
 
 // Read once: another page is another path, which remounts this one.
-const parent = createDiffsStore(createRpcSource(rpc, targetFor(props.page, rpc)), { cache, llm })
+const parent = createDiffsStore(createRpcSource(rpc, targetFor(props.page, rpc)), { cache, llm, analyze })
 const { store, commitNav, selected } = useCommitView(parent, sha => createRpcSource(rpc, Promise.resolve(sha)), { cache, llm })
 
 useDocumentTitle(() => store.value.diff?.title ?? routeForPage(props.page))

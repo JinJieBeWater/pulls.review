@@ -54,3 +54,8 @@ export function sharedAnalysisQuery(arg: string | undefined, from: string | unde
     throw new Error('--from only applies to a GitHub pull request (owner/repo#123 or its github.com URL).')
   return `?${new URLSearchParams({ from })}`
 }
+
+/** `--analyze`: the page starts the AI analysis once it has loaded, follows the one already running, or keeps an up-to-date one. */
+export function withAnalyze(query: string, analyze: boolean | undefined): string {
+  return analyze ? `${query ? `${query}&` : '?'}analyze` : query
+}

@@ -144,6 +144,28 @@ describe('createDiffsStore llm session/progress/error', () => {
     expect(store.llm!.error).toBeUndefined()
   })
 
+  it('starts an analysis on load when asked (?analyze), but follows one already running or keeps an existing one instead', async () => {
+    const result = { source: 'llm' as const, groups: [], schemaVersion: 1, generatedAt: new Date().toISOString() }
+    runLlmAnalysisMock.mockResolvedValue({ result, transcript: transcript() })
+    const store = createDiffsStore(createPasteSource(PATCH_TEXT), { cache, llm, analyze: true })
+    await store.load()
+    await vi.waitFor(() => expect(store.aiResult).toEqual(result))
+    expect(runLlmAnalysisMock).toHaveBeenCalledTimes(1)
+
+    const follow = vi.fn(async () => ({ result, transcript: transcript() }))
+    const attached = createDiffsStore(createPasteSource(PATCH_TEXT), { cache, llm: { ...llm, attach: async () => follow }, analyze: true })
+    await attached.load()
+    await vi.waitFor(() => expect(follow).toHaveBeenCalled())
+    expect(runLlmAnalysisMock).toHaveBeenCalledTimes(1)
+
+    const reopened = createDiffsStore(createPasteSource(PATCH_TEXT), { cache, llm, analyze: true })
+    await reopened.load()
+    await new Promise(resolve => setTimeout(resolve))
+    expect(reopened.aiResult).toEqual(result)
+    expect(reopened.llm!.isAnalyzing).toBe(false)
+    expect(runLlmAnalysisMock).toHaveBeenCalledTimes(1)
+  })
+
   it('follows a run still going for the diff after a reload, and only detaches from it when disposed', async () => {
     let signal: AbortSignal | undefined
     const attach = vi.fn(async (_key: string) => (options: { signal?: AbortSignal }) => new Promise<never>((_, reject) => {
@@ -259,6 +281,26 @@ describe('createDiffsStore over any source', () => {
     await store.refresh()
     expect(store.diff?.title).toBe('at b')
     expect(store.isStale).toBe(false)
+  })
+
+  it('with ?analyze, analyzes again only when the head moved since the cached analysis', async () => {
+    const head = { sha: 'a' }
+    const source = fakeSource(head)
+    runLlmAnalysisMock.mockImplementation(async (diff: DiffsPayload) => ({ result: { source: 'llm', groups: [], schemaVersion: 1, generatedAt: '', headSha: diff.head?.sha }, transcript: transcript() }))
+    const first = createDiffsStore(source, { cache, llm, analyze: true })
+    await first.load()
+    await vi.waitFor(() => expect(first.aiResult?.headSha).toBe('a'))
+
+    await createDiffsStore(source, { cache, llm, analyze: true }).load()
+    await settle()
+    expect(runLlmAnalysisMock).toHaveBeenCalledTimes(1)
+
+    head.sha = 'b'
+    const moved = createDiffsStore(source, { cache, llm, analyze: true })
+    await moved.load()
+    expect(moved.diff?.title).toBe('at b')
+    await vi.waitFor(() => expect(moved.aiResult?.headSha).toBe('b'))
+    expect(runLlmAnalysisMock).toHaveBeenCalledTimes(2)
   })
 
   it('never checks staleness for a source without a fingerprint', async () => {

@@ -103,11 +103,13 @@ export function createLlmStore(opts: LlmStoreOptions): DiffsStoreLlm {
     await track(options => opts.runner.analyze(currentDiff, options), opts.runner.outlivesPage?.() ?? false)
   }
 
-  async function resume() {
+  async function resume(start = false) {
     const key = opts.getCacheKey()
     const follow = key && !isAnalyzing.value ? await opts.runner.attach?.(key) : undefined
     if (follow)
       await track(follow, true)
+    else if (start && !isAnalyzing.value)
+      await reanalyze()
   }
 
   function abort() {

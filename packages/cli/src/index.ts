@@ -2,7 +2,7 @@ import process from 'node:process'
 import { parseArgs } from 'node:util'
 import { createDevServer } from 'devframe/adapters/dev'
 import devframe from './devframe'
-import { browserPath, pageFor, sharedAnalysisQuery } from './page'
+import { browserPath, pageFor, sharedAnalysisQuery, withAnalyze } from './page'
 import { createAppWithRefRoutes } from './spa'
 
 const HELP = `Usage: jin.review [target] [options]
@@ -33,6 +33,9 @@ Options:
   --worktree      open the uncommitted changes against HEAD
   --from <login>  with a GitHub pull request, load the AI analysis <login> shared
                   on it (the site's ?from=<login>), its latest version every time
+  --analyze       start the AI analysis once the page opens (or follow the one
+                  already running, or keep an up-to-date one), with the provider
+                  chosen in Settings
   --port <port>   port to listen on
   --no-open       do not open the browser
   -h, --help
@@ -48,6 +51,7 @@ async function main() {
       'stop': { type: 'boolean' },
       'worktree': { type: 'boolean' },
       'from': { type: 'string' },
+      'analyze': { type: 'boolean' },
       'port': { type: 'string' },
       'no-open': { type: 'boolean' },
       'help': { type: 'boolean', short: 'h' },
@@ -63,7 +67,7 @@ async function main() {
     await routeDaemon(flags, positionals)
     return
   }
-  const page = browserPath(await pageFor(process.cwd(), positionals[0], !!flags.worktree)) + sharedAnalysisQuery(positionals[0], flags.from)
+  const page = browserPath(await pageFor(process.cwd(), positionals[0], !!flags.worktree)) + withAnalyze(sharedAnalysisQuery(positionals[0], flags.from), flags.analyze)
   await createDevServer(devframe, {
     app: createAppWithRefRoutes(),
     port: flags.port ? Number(flags.port) : undefined,
