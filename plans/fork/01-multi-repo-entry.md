@@ -64,7 +64,8 @@ These limit new work only; nothing upstream already does is removed.
 - `pulls.review --stop` stops the daemon and every worktree process, using the pid in
   `~/.pulls.review/`.
 - `-d` opens the page the foreground command would (the current branch, or a target,
-  `--worktree`); `--from` is refused.
+  `--worktree`, `--analyze`); `--from` is refused. The shell's saved tabs drop
+  `?analyze`, so restoring a tab doesn't start another analysis.
 - `-d --pwa` opens the installed app through its `web+pullsreview:` protocol handler.
   Without `--pwa`, it opens an HTTP sign-in link in the default browser. `--no-open`
   prints the selected launch credential instead of opening it.

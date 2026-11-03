@@ -8,6 +8,7 @@ It adds one background server on `http://127.0.0.1:7855` for every repository an
 bun add -g jin.review   # or npm i -g jin.review
 jin.review -d           # open this repository in the background server
 jin.review -d --pwa     # the same, in the installed app
+jin.review -d --pwa --analyze  # the same, starting the AI analysis
 jin.review --stop       # stop the server and its worktree servers
 ```
 
