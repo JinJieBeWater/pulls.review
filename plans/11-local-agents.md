@@ -112,12 +112,13 @@ the branch renders disabled with its note.
 
 New functions in `packages/cli/src/rpc.ts`, names in `core/local-rpc.ts`:
 
-| Function        | Type   | Does                                                                                                                                                                          |
-| --------------- | ------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `agent.list`    | query  | The agent CLIs found on `PATH`, with versions and model catalogs: `{ name, label, version, models }[]`. Detected once per server start (`<bin> --version`, then the catalog). |
-| `agent.analyze` | query  | `{ agent, model, diff, locale }` → `{ streamId }`. Writes the patch, spawns the agent, streams events on the `pulls.review:agent` channel. Returns before the run ends.       |
-| `agent.chat`    | query  | `{ agent, model, diff, session, text?, locale }` → `{ streamId }`. Resumes the agent session; `text` absent re-sends the last user message (the chat's retry).                |
-| `agent.abort`   | action | `{ streamId }`. Kills the subprocess; the stream ends with `aborted`.                                                                                                         |
+| Function        | Type   | Does                                                                                                                                                                                                                                                                    |
+| --------------- | ------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `agent.list`    | query  | The agent CLIs found on `PATH`, with versions and model catalogs: `{ name, label, version, models }[]`. Detected once per server start (`<bin> --version`, then the catalog).                                                                                           |
+| `agent.analyze` | query  | `{ agent, model, diff, locale, key? }` → `{ streamId }`. Writes the patch, spawns the agent, streams events on the `pulls.review:agent` channel. Returns before the run ends. With the diff's cache `key`, a run already going for it is returned instead of a new one. |
+| `agent.running` | query  | `{ key }` → `{ streamId? }`. The analysis still going for that cache key, for a page that reloaded or opened since.                                                                                                                                                     |
+| `agent.chat`    | query  | `{ agent, model, diff, session, text?, locale }` → `{ streamId }`. Resumes the agent session; `text` absent re-sends the last user message (the chat's retry).                                                                                                          |
+| `agent.abort`   | action | `{ streamId }`. Kills the subprocess; the stream ends with `aborted`.                                                                                                                                                                                                   |
 
 Streams use devframe's `scope.rpc.streaming.create('agent', { replayWindow })` - the
 browser subscribes only after the call that started the run returns, so the buffer
@@ -211,6 +212,14 @@ fetch does today, so any id the CLI accepts can still be typed.
 No turn cap or timeout is enforced here: the CLIs cap themselves, and the view's
 Stop button aborts a run that hangs.
 
+A run outlives the page that started it: only `agent.abort` (the Stop button)
+ends it, not a reload, a closed tab or the store being disposed - the store only
+stops following it (`llm.detach()`). After loading a diff, the store asks
+`agent.running` for its cache key and follows a run it finds from the start of
+the replay buffer (`llm.resume()`). An analysis started with a `key` saves its
+result and session under it when it ends, so a page that left finds them in the
+cache; the page following it saves the same, as on the site.
+
 ### Chat
 
 - `LlmSession` gains `agent?: AgentSessionRef`. `setSession` stores it with the
@@ -231,12 +240,11 @@ Stop button aborts a run that hangs.
 
 - Only a trusted devframe client reaches `agent.*` (Plan 09). The agent runs as the
   user, in the user's repository, with read-only tools. Nothing writes but the patch
-  file in the cache directory.
+  file and the finished analysis, both in the cache directory.
 - The server passes no credentials to the agent: it inherits the user's shell
   environment, where its own login already is.
-- A second `agent.analyze` while one runs is a second process; the store aborts
-  the first through `agent.abort` before starting it, as `reanalyze` does in the
-  browser.
+- A second `agent.analyze` for another diff while one runs is a second process;
+  for the same cache key it follows the first (another tab or window).
 
 ## Testing
 
