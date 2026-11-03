@@ -7,8 +7,8 @@ function shared() {
   return { locale: settings.value.locale, llm }
 }
 
-/** Takes the daemon's settings before any tab loads, then hands it every change a tab's settings dialog makes. */
-export async function syncSettings(): Promise<void> {
+/** Merges the daemon's settings into this browser's, which keep their API keys. */
+async function pull(): Promise<void> {
   try {
     const response = await fetch('/api/settings')
     if (response.ok) {
@@ -19,6 +19,17 @@ export async function syncSettings(): Promise<void> {
   catch {
     // The daemon is down: the shell says so, and this browser's settings stand.
   }
+}
+
+/** Takes the daemon's settings before any tab loads, then hands it every change a tab's settings dialog makes. */
+export async function syncSettings(): Promise<void> {
+  await pull()
+  // The Herdr pane writes the agent and model too: take the daemon's copy again when this window comes back,
+  // so a change made here doesn't send back what the pane replaced.
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible')
+      void pull()
+  })
   // Immediate: the first run seeds the daemon from this browser.
   watch(shared, value => void fetch('/api/settings', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(value) }).catch(() => {}), { deep: true, immediate: true })
 }

@@ -22,4 +22,10 @@ it('takes the daemon\'s settings, keeps this browser\'s keys, and sends back eve
   expect(sent).toHaveLength(2)
   expect(sent[1]).toMatchObject({ locale: 'zh-CN', llm: { provider: 'local-agent', agent: 'pi', agentModel: 'm' } })
   expect(JSON.stringify(sent)).not.toContain('secret')
+
+  // Another client (the Herdr pane) picks a model; coming back to this window takes it rather than sending the old one back.
+  fetch.mockImplementation(async (_url: string, init?: RequestInit) => Response.json(init ? {} : { locale: 'zh-CN', llm: { provider: 'local-agent', agent: 'codex', agentModel: 'gpt-x' } }))
+  document.dispatchEvent(new Event('visibilitychange'))
+  await flushPromises()
+  expect(settings.value.llm).toMatchObject({ agent: 'codex', agentModel: 'gpt-x', gatewayToken: 'secret' })
 })
