@@ -11,6 +11,7 @@ npx pulls.review HEAD          # one commit against its parent
 npx pulls.review --worktree    # uncommitted changes against HEAD, untracked files included
 npx pulls.review owner/repo#1  # a GitHub pull request (or a github.com PR, compare, commit or repo URL)
 npx pulls.review owner/repo#1 --from octocat  # the same, loading the latest AI analysis octocat shared on it
+npx pulls.review --analyze     # the current branch, starting the AI analysis (or following the one running, or keeping an up-to-date one) once it opens
 ```
 
 Run it inside a git repository. It serves on `localhost` through [devframe](https://github.com/devframes/devframe) and opens the page for the argument; any other branch, range or commit can be picked from `/`. The tab is trusted with a one-time code printed in the terminal. Reviewed marks and AI results are cached in `.git/pulls-review`.
