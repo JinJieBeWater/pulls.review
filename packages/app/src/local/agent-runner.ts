@@ -89,6 +89,7 @@ export function createAgentLlmRunner(rpc: LocalRpc, browser: LlmRunner): LlmRunn
 
   return {
     isSetup: () => chosen() !== undefined || browser.isSetup(),
+    outlivesPage: () => chosen() !== undefined,
     async analyze(diff, options) {
       const choice = chosen()
       if (!choice)

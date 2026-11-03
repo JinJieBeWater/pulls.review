@@ -59,12 +59,16 @@ export function createLlmStore(opts: LlmStoreOptions): DiffsStoreLlm {
     onGroupingUpdate: setResult,
   })
 
-  async function track(run: (options: LlmRunOptions) => Promise<LlmAnalyzeRun>) {
+  async function track(run: (options: LlmRunOptions) => Promise<LlmAnalyzeRun>, outlivesPage: boolean) {
     error.value = undefined
     transcript.value = []
     isAnalyzing.value = true
     const controller = new AbortController()
     abortController = controller
+    // A run in this page ends with it: ask before a reload or close throws it away.
+    const confirmLeave = (event: Event) => event.preventDefault()
+    if (!outlivesPage)
+      globalThis.addEventListener?.('beforeunload', confirmLeave)
     try {
       const { result, transcript: messages, agent } = await run({
         onProgress: next => progress.value = { step: next.step, message: describeProgress(next) },
@@ -82,6 +86,7 @@ export function createLlmStore(opts: LlmStoreOptions): DiffsStoreLlm {
         error.value = localizeError(err)
     }
     finally {
+      globalThis.removeEventListener?.('beforeunload', confirmLeave)
       if (abortController === controller)
         abortController = undefined
       progress.value = undefined
@@ -95,14 +100,14 @@ export function createLlmStore(opts: LlmStoreOptions): DiffsStoreLlm {
     if (!currentDiff)
       return
     chat.stop()
-    await track(options => opts.runner.analyze(currentDiff, options))
+    await track(options => opts.runner.analyze(currentDiff, options), opts.runner.outlivesPage?.() ?? false)
   }
 
   async function resume() {
     const key = opts.getCacheKey()
     const follow = key && !isAnalyzing.value ? await opts.runner.attach?.(key) : undefined
     if (follow)
-      await track(follow)
+      await track(follow, true)
   }
 
   function abort() {

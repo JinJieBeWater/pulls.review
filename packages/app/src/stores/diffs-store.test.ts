@@ -160,6 +160,26 @@ describe('createDiffsStore llm session/progress/error', () => {
     expect(signal?.reason).toBe(DETACHED)
   })
 
+  it('asks before leaving the page only while a run that ends with it is going', async () => {
+    const add = vi.spyOn(globalThis, 'addEventListener')
+    const remove = vi.spyOn(globalThis, 'removeEventListener')
+    const store = createDiffsStore(createPasteSource(PATCH_TEXT), { cache, llm })
+    await store.load()
+    let finish!: (run: unknown) => void
+    runLlmAnalysisMock.mockReturnValue(new Promise(resolve => finish = resolve))
+
+    const running = store.llm!.reanalyze()
+    const guard = add.mock.calls.find(([type]) => type === 'beforeunload')?.[1] as (event: Event) => void
+    const event = new Event('beforeunload', { cancelable: true })
+    guard(event)
+    expect(event.defaultPrevented).toBe(true)
+    finish({ result: { source: 'llm', groups: [], schemaVersion: 1, generatedAt: new Date().toISOString() }, transcript: transcript() })
+    await running
+    expect(remove).toHaveBeenCalledWith('beforeunload', guard)
+    add.mockRestore()
+    remove.mockRestore()
+  })
+
   it('never persists the rule-based result, recomputing it from the diff instead', async () => {
     const store = createDiffsStore(createPasteSource(PATCH_TEXT), { cache, llm })
     await store.load()

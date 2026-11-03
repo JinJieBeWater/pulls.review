@@ -38,6 +38,8 @@ export interface LlmChatInput {
 export interface LlmRunner {
   /** Reactive: reads Settings (and, for the server, what it found). */
   isSetup: () => boolean
+  /** Whether a run started now goes on when the page goes (a server run); absent means it doesn't. */
+  outlivesPage?: () => boolean
   analyze: (diff: DiffsPayload, options: LlmRunOptions) => Promise<LlmAnalyzeRun>
   /** The run the server is still doing for `key`, to follow; `undefined` when there is none. A browser run ends with its page. */
   attach?: (key: string) => Promise<((options: LlmRunOptions) => Promise<LlmAnalyzeRun>) | undefined>
