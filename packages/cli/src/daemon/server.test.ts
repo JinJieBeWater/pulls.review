@@ -14,6 +14,7 @@ import { detectAgents } from '../agents'
 import { upgradeProxy } from './proxy'
 import { COOKIE, secret } from './security'
 import { createDaemonApp } from './server'
+import { defaultLocale } from './settings'
 
 vi.mock('../agents', () => ({ detectAgents: vi.fn() }))
 
@@ -131,11 +132,13 @@ it('refuses launches outside a checkout and serves the tab shell with only its o
 it('keeps the shared settings without API keys, and has a picked local agent analyze a launched ?analyze page', async () => {
   const { call, options, send, settings } = await fixture()
   const write = (body: unknown) => call('/api/settings', { method: 'PUT', headers: { origin: options.origin }, body: JSON.stringify(body) })
-  expect(await (await call('/api/settings')).json()).toEqual({})
+  // An unset locale means the system's language, as the app's default; the pane reads which, and a PUT drops it.
+  expect(await (await call('/api/settings')).json()).toEqual({ defaultLocale: defaultLocale() })
   expect((await write({ llm: { agent: 'nope' } })).status).toBe(400)
-  await write({ locale: 'zh-CN', llm: { provider: 'gateway', gatewayToken: 'secret', agent: 'pi', agentModel: '' } })
-  expect(await (await call('/api/settings')).json()).toEqual({ locale: 'zh-CN', llm: { provider: 'gateway', agent: 'pi', agentModel: '' } })
+  await write({ locale: 'zh-CN', defaultLocale: 'en', llm: { provider: 'gateway', gatewayToken: 'secret', agent: 'pi', agentModel: '' } })
+  expect(await (await call('/api/settings')).json()).toEqual({ locale: 'zh-CN', defaultLocale: defaultLocale(), llm: { provider: 'gateway', agent: 'pi', agentModel: '' } })
   expect(JSON.stringify(settings.write.mock.calls)).not.toContain('secret')
+  expect(JSON.stringify(settings.write.mock.calls)).not.toContain('defaultLocale')
 
   const launch = (page: string) => call('/api/launch', { method: 'POST', headers: { origin: options.origin }, body: JSON.stringify({ path: '/repo', page }) })
   await launch('/branch/fix?analyze')
@@ -147,6 +150,13 @@ it('keeps the shared settings without API keys, and has a picked local agent ana
   await launch('/branch/fix?analyze')
   await vi.waitFor(() => expect(send).toHaveBeenCalledWith({ type: 'analyze', page: '/branch/fix', agent: 'pi', model: 'm', locale: 'zh-CN' }))
   expect(send).toHaveBeenCalledTimes(1)
+  // No language set: the system's, as the app's default.
+  vi.stubGlobal('navigator', { languages: ['ja-JP'] })
+  await write({ llm: { provider: 'local-agent', agent: 'pi', agentModel: 'm' } })
+  await launch('/branch/other?analyze')
+  await vi.waitFor(() => expect(send).toHaveBeenLastCalledWith({ type: 'analyze', page: '/branch/other', agent: 'pi', model: 'm', locale: 'ja' }))
+  expect(await (await call('/api/settings')).json()).toMatchObject({ defaultLocale: 'ja' })
+  vi.unstubAllGlobals()
 })
 
 it('answers the Herdr pane: validates its requests, says why it cannot analyze, and analyzes again on request', async () => {

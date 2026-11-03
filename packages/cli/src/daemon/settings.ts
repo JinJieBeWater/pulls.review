@@ -2,6 +2,7 @@ import type { LocalAgentName } from '@pulls.review/core/analyze'
 import type { Locale } from '@pulls.review/core/locales'
 import { readFile } from 'node:fs/promises'
 import { LLM_PROVIDERS, LOCAL_AGENT_NAMES } from '@pulls.review/core/analyze'
+import { detectLocale } from '@pulls.review/core/locales'
 import * as v from 'valibot'
 import { atomicWrite } from './registry'
 import { LocaleSchema } from './schema'
@@ -45,8 +46,11 @@ export function createSettingsStore(file: string): SettingsStore {
   }
 }
 
+/** The language an unset locale means, as the app's default: the system's preferred one it ships, else English. */
+export const defaultLocale = (): Locale => detectLocale(globalThis.navigator?.languages ?? [])
+
 /** The local agent a daemon-started analysis runs, when the settings pick one. */
 export function agentChoice(settings: SharedSettings): { agent: LocalAgentName, model: string, locale: Locale } | undefined {
   const { provider, agent, agentModel = '' } = settings.llm ?? {}
-  return provider === 'local-agent' && agent ? { agent, model: agentModel, locale: settings.locale ?? 'en' } : undefined
+  return provider === 'local-agent' && agent ? { agent, model: agentModel, locale: settings.locale ?? defaultLocale() } : undefined
 }

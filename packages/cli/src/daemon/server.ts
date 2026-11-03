@@ -15,7 +15,7 @@ import { worktreeId, worktrees } from './registry'
 import { ColorsSchema, createReviewCaches, readFullFile, readReview, ReviewError, setReviewed } from './review'
 import { COMMAND, PWA_PROTOCOL } from './schema'
 import { COOKIE, createLaunchTokens, hasSession, requestGuard } from './security'
-import { agentChoice, SharedSettingsSchema } from './settings'
+import { agentChoice, defaultLocale, SharedSettingsSchema } from './settings'
 import { createShellFiles, MANIFEST, SERVICE_WORKER } from './shell'
 
 const pathSchema = v.object({ path: v.pipe(v.string(), v.minLength(1), v.maxLength(4096)) })
@@ -123,7 +123,8 @@ export function createDaemonApp(options: {
     return { stopping: true }
   })
   app.get('/api/repos', () => registry.repos())
-  app.get('/api/settings', () => settings.read())
+  // With the language an unset locale means, for the pane to show; the shell takes only `locale`, and a PUT drops it.
+  app.get('/api/settings', async () => ({ ...await settings.read(), defaultLocale: defaultLocale() }))
   // The agent CLIs on PATH and their models, for the pane's analysis settings. Listing models takes seconds, so an ask
   // gets the last list at once and starts finding them again: an agent installed since shows up on the next ask.
   app.get('/api/agents', () => {
