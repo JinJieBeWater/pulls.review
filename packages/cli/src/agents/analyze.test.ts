@@ -9,6 +9,7 @@ import { installFakeAgents } from '../../test/fake-agents'
 import { runAgentAnalysis } from './analyze'
 import { runAgentChat } from './chat'
 import { claude } from './claude'
+import { codex } from './codex'
 import { agents, detectAgents } from './index'
 import { opencode } from './opencode'
 import { pi } from './pi'
@@ -50,6 +51,18 @@ describe('detectAgents', () => {
       { name: 'pi', label: 'Pi', version: '0.0.0-fake', models: [] },
       { name: 'codex', label: 'Codex', version: '0.0.0-fake', models: [] },
     ])
+  })
+
+  it('lists Pi models as provider/model and Codex models its picker shows', async () => {
+    fake.replay('pi-models.txt')
+    expect(await pi.models()).toEqual([
+      { id: 'anthropic/claude-sonnet-5', name: 'anthropic/claude-sonnet-5' },
+      { id: 'openai/gpt-5.1', name: 'openai/gpt-5.1' },
+    ])
+    expect(fake.calls().at(-1)?.args).toEqual(['--list-models'])
+    fake.replay('codex-models.json')
+    expect(await codex.models()).toEqual([{ id: 'gpt-5.1-codex', name: 'GPT-5.1-Codex' }, { id: 'gpt-5.1', name: 'gpt-5.1' }])
+    expect(fake.calls().at(-1)?.args).toEqual(['debug', 'models'])
   })
 })
 

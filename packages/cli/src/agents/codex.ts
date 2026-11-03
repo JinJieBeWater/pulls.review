@@ -1,4 +1,7 @@
+import type { ModelOption } from '@pulls.review/core/llm'
 import type { AgentCli, AgentCliEvent, AgentRunInput } from './types'
+import { execFile } from 'node:child_process'
+import { promisify } from 'node:util'
 import * as v from 'valibot'
 import { readVersion, spawnJsonLines } from './process'
 import { assistantMessage, toolCall, toolResultMessage } from './types'
@@ -71,12 +74,21 @@ function lineEvents(line: v.InferOutput<typeof Line>, state: RunState, model: st
   }
 }
 
+const Catalog = v.object({ models: v.array(v.object({ slug: v.string(), display_name: v.optional(v.string()), visibility: v.optional(v.string()) })) })
+
+/** `codex debug models` prints the model catalog as JSON; its picker shows the ones not hidden. */
+// shortcut: `debug models` is Codex's debugging output, not a stable interface; a changed shape lists nothing, a documented list command would replace it.
+async function listModels(): Promise<ModelOption[]> {
+  const { stdout } = await promisify(execFile)('codex', ['debug', 'models'], { maxBuffer: 4 * 1024 * 1024 })
+  return v.parse(Catalog, JSON.parse(stdout)).models.filter(model => model.visibility !== 'hide').map(model => ({ id: model.slug, name: model.display_name ?? model.slug }))
+}
+
 /** Codex exec persists threads in its own storage; JSONL carries the thread id, not the model. */
 export const codex: AgentCli = {
   name: 'codex',
   label: 'Codex',
   detect: () => readVersion('codex'),
-  models: async () => [],
+  models: () => listModels().catch(() => []),
   async* run(input): AsyncGenerator<AgentCliEvent> {
     const state: RunState = { model: input.model ?? 'default', errorText: '', commands: new Set() }
     for await (const event of spawnJsonLines('codex', args(input), { cwd: input.cwd, signal: input.signal, stdin: `${input.system}\n\n${input.prompt}` })) {

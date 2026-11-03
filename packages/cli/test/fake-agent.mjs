@@ -11,7 +11,12 @@ if (process.argv.includes('--version')) {
 }
 
 const dir = process.env.FAKE_AGENT_DIR
-const stdin = readFileSync(0, 'utf8')
+// A listing call (`execFile`) leaves stdin an empty pipe, which reads as EAGAIN rather than nothing.
+let stdin = ''
+try {
+  stdin = readFileSync(0, 'utf8')
+}
+catch {}
 const callsFile = join(dir, 'calls.json')
 const calls = existsSync(callsFile) ? JSON.parse(readFileSync(callsFile, 'utf8')) : []
 calls.push({ args: process.argv.slice(2), stdin, cwd: process.cwd() })

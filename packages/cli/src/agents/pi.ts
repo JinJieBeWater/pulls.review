@@ -1,7 +1,10 @@
 import type { AssistantMessage, ToolResultMessage } from '@earendil-works/pi-ai'
+import type { ModelOption } from '@pulls.review/core/llm'
 import type { AgentCli, AgentCliEvent, AgentRunInput } from './types'
+import { execFile } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
 import process from 'node:process'
+import { promisify } from 'node:util'
 import { readVersion, spawnJsonLines } from './process'
 
 const READ_ONLY_TOOLS = 'read,grep,find,ls'
@@ -114,12 +117,22 @@ function lineEvents(value: unknown, state: PiRunState): AgentCliEvent[] {
   return []
 }
 
+/** `pi --list-models` prints a table under a `provider  model …` header; `--model` takes `provider/model`. */
+async function listModels(): Promise<ModelOption[]> {
+  const { stdout } = await promisify(execFile)('pi', ['--list-models'], { maxBuffer: 4 * 1024 * 1024 })
+  const lines = stdout.split('\n')
+  const header = lines.findIndex(line => /^provider\s+model\s/.test(line.trim()))
+  if (header < 0)
+    return []
+  return lines.slice(header + 1).map(line => line.trim().split(/\s+/)).filter(([provider, model]) => provider && model).map(([provider, model]) => ({ id: `${provider}/${model}`, name: `${provider}/${model}` }))
+}
+
 /** Pi's JSON mode uses the user's existing Pi model configuration and credentials. */
 export const pi: AgentCli = {
   name: 'pi',
   label: 'Pi',
   detect: () => readVersion('pi'),
-  models: async () => [],
+  models: () => listModels().catch(() => []),
   async* run(input: AgentRunInput): AsyncGenerator<AgentCliEvent> {
     const state: PiRunState = { session: input.resume, finalSent: false }
     const sessionId = randomUUID()
