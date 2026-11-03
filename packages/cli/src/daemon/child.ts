@@ -2,7 +2,7 @@ import type { DevframeNodeContext } from 'devframe/types'
 import type { LocalCall } from './analysis'
 import process from 'node:process'
 import { createCacheRepositories } from '@pulls.review/core/cache'
-import { LOCAL_DEVFRAME_ID } from '@pulls.review/core/local-rpc'
+import { LOCAL_DEVFRAME_ID, LOCAL_RPC } from '@pulls.review/core/local-rpc'
 import { createDevServer } from 'devframe/adapters/dev'
 import { createInteractiveAuth } from 'devframe/recipes/interactive-auth'
 import { createStorage } from 'unstorage'
@@ -11,7 +11,7 @@ import devframe from '../devframe'
 import { createAppWithRefRoutes } from '../spa'
 import { createRepoCacheDriver } from '../storage'
 import { analyzePage } from './analysis'
-import { WorktreeAnalyzeSchema, WorktreeStartSchema } from './schema'
+import { WorktreeAnalyzeSchema, WorktreeRunningSchema, WorktreeStartSchema } from './schema'
 
 process.umask(0o077)
 process.once('disconnect', () => process.kill(-process.pid, 'SIGKILL'))
@@ -23,6 +23,13 @@ process.on('message', (message: unknown) => {
   // Nobody reads this process's output: a failure surfaces as the page starting the run itself.
   if (request.success && call)
     void diffs.then(cache => analyzePage(call!, cache, process.cwd(), request.output)).catch(() => {})
+  const running = v.safeParse(WorktreeRunningSchema, message)
+  if (running.success) {
+    const { id, key } = running.output
+    void (call ? call(LOCAL_RPC.agentRunning, { key }) : Promise.resolve({}))
+      .catch(error => ({ error: error instanceof Error ? error.message : String(error) }))
+      .then(state => process.send?.({ type: 'running', id, state }))
+  }
 })
 
 process.once('message', async (message: unknown) => {

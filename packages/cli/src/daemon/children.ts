@@ -1,16 +1,42 @@
 import type { ChildProcess } from 'node:child_process'
-import type { Worktree, WorktreeAnalyze } from './schema'
+import type { RunningState, Worktree, WorktreeAnalyze } from './schema'
 import { fork } from 'node:child_process'
 import process from 'node:process'
 import { setTimeout as delay } from 'node:timers/promises'
 import * as v from 'valibot'
-import { WorktreeMessageSchema } from './schema'
+import { WorktreeMessageSchema, WorktreeRunningReplySchema } from './schema'
 import { secret } from './security'
 
 export interface WorktreeServer {
   port: number
   token: string
   send: (message: WorktreeAnalyze) => void
+  /** The analysis running for a cache key, its latest progress, or why the last one failed. */
+  running: (key: string) => Promise<RunningState>
+}
+
+/** Replies to `running` requests, matched by id; a request the child never answers gives up after 5 s. */
+function runningRequests(child: ChildProcess) {
+  const pending = new Map<number, (state: RunningState) => void>()
+  let next = 0
+  child.on('message', (raw: unknown) => {
+    const reply = v.safeParse(WorktreeRunningReplySchema, raw)
+    if (reply.success)
+      pending.get(reply.output.id)?.(reply.output.state)
+  })
+  return (key: string) => new Promise<RunningState>((resolve, reject) => {
+    const id = ++next
+    const timer = setTimeout(() => {
+      pending.delete(id)
+      reject(new Error('Worktree server did not answer'))
+    }, 5_000)
+    pending.set(id, (state) => {
+      clearTimeout(timer)
+      pending.delete(id)
+      resolve(state)
+    })
+    child.send({ type: 'running', id, key })
+  })
 }
 
 export function signalGroup(child: ChildProcess, signal: NodeJS.Signals): void {
@@ -70,7 +96,7 @@ export function createWorktreeServers() {
             return
           }
           clearTimeout(timeout)
-          resolve({ port: message.port, token, send: request => child.send(request) })
+          resolve({ port: message.port, token, send: request => child.send(request), running: runningRequests(child) })
         }
         catch (error) {
           signalGroup(child, 'SIGKILL')
@@ -94,6 +120,11 @@ export function createWorktreeServers() {
     return ready
   }
 
+  /** The worktree's server if one is started, without starting one. */
+  function peek(tree: Worktree): Promise<WorktreeServer> | undefined {
+    return servers.get(tree.id)
+  }
+
   async function close(): Promise<void> {
     stopping = true
     const active = [...children]
@@ -112,5 +143,5 @@ export function createWorktreeServers() {
       signalGroup(child, 'SIGKILL')
   }
 
-  return { get, close }
+  return { get, peek, close }
 }

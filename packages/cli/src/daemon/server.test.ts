@@ -10,9 +10,12 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { PassThrough } from 'node:stream'
 import { afterEach, expect, it, vi } from 'vitest'
+import { detectAgents } from '../agents'
 import { upgradeProxy } from './proxy'
 import { COOKIE, secret } from './security'
 import { createDaemonApp } from './server'
+
+vi.mock('../agents', () => ({ detectAgents: vi.fn() }))
 
 const cleanup: (() => Promise<void>)[] = []
 afterEach(async () => {
@@ -38,7 +41,7 @@ async function fixture(port = 1) {
   const tree = { id: 'main-123', path: '/repo', branch: 'main' }
   const registry = { repos: vi.fn(async () => [{ path: '/repo' }]), add: vi.fn(async () => tree), addCurrent: vi.fn(async (): Promise<Worktree | undefined> => tree), find: vi.fn(async (_id: string): Promise<Worktree | undefined> => tree), remove: vi.fn() }
   const send = vi.fn()
-  const children = { get: vi.fn(async () => ({ port, token: 'server-only-token', send })) }
+  const children = { get: vi.fn(async () => ({ port, token: 'server-only-token', send, running: vi.fn(async () => ({})) })), peek: vi.fn(() => undefined) }
   let stored: SharedSettings = {}
   const settings = { read: vi.fn(async () => stored), write: vi.fn(async (next: SharedSettings) => void (stored = next)) }
   const log = vi.fn()
@@ -83,7 +86,7 @@ async function fixture(port = 1) {
 
 it('protects every HTTP surface, exchanges launch links once and never logs credentials', async () => {
   const { call, log } = await fixture()
-  for (const path of ['/', '/sw.js', '/assets/shell.js', '/api/events', '/api/status', '/api/repos', '/api/settings', '/r/main-123/', '/r/main-123/__connection.json'])
+  for (const path of ['/', '/sw.js', '/assets/shell.js', '/api/events', '/api/status', '/api/repos', '/api/settings', '/api/agents', '/r/main-123/', '/r/main-123/__connection.json'])
     expect((await call(path, {}, false)).status).toBe(401)
   expect((await call('/manifest.webmanifest', {}, false)).status).toBe(200)
   expect((await call('/', { headers: { host: 'evil.test' } })).status).toBe(403)
@@ -144,6 +147,33 @@ it('keeps the shared settings without API keys, and has a picked local agent ana
   await launch('/branch/fix?analyze')
   await vi.waitFor(() => expect(send).toHaveBeenCalledWith({ type: 'analyze', page: '/branch/fix', agent: 'pi', model: 'm', locale: 'zh-CN' }))
   expect(send).toHaveBeenCalledTimes(1)
+})
+
+it('answers the Herdr pane: validates its requests, says why it cannot analyze, and analyzes again on request', async () => {
+  const { call, options, send, settings, registry } = await fixture()
+  const post = (path: string, body: unknown) => call(path, { method: 'POST', headers: { origin: options.origin }, body: JSON.stringify(body) })
+  expect((await post('/api/review', { path: '/repo', page: '/worktree' })).status).toBe(400)
+  expect((await post('/api/review', { path: '/repo', page: '/worktree', colors: { keyword: 'red' } })).status).toBe(400)
+  // A large group's paths fit the review request, not the other routes.
+  const paths = Array.from({ length: 300 }, (_, i) => `apps/some/deep/folder/file-${i}.ts`)
+  expect((await post('/api/review', { path: '/repo', page: '/worktree', colors: {}, rows: paths })).status).not.toBe(413)
+  expect((await post('/api/review/analyze', { path: '/repo', page: '/worktree', pad: paths })).status).toBe(413)
+  // A git failure reaches the pane as its message.
+  const failed = await post('/api/review', { path: '/repo', page: '/worktree', colors: {} })
+  expect(failed.status).toBe(500)
+  expect(await failed.text()).not.toBe('')
+
+  const analyze = await post('/api/review/analyze', { path: '/repo', page: '/worktree' })
+  expect(analyze.status).toBe(409)
+  expect(await analyze.text()).toContain('local agent')
+  await settings.write({ locale: 'en', llm: { provider: 'local-agent', agent: 'pi', agentModel: '' } })
+  expect((await post('/api/review/analyze', { path: '/repo', page: '/worktree', force: true })).status).toBe(200)
+  expect(send).toHaveBeenCalledWith({ type: 'analyze', page: '/worktree', agent: 'pi', model: '', locale: 'en', force: true })
+
+  // An unknown worktree is registered on first use, as a launch registers it.
+  registry.find.mockResolvedValueOnce(undefined)
+  registry.addCurrent.mockResolvedValueOnce(undefined)
+  expect((await post('/api/review/analyze', { path: '/elsewhere', page: '/worktree' })).status).toBe(422)
 })
 
 it('exchanges a PWA launch token for a cookie and page without navigating the shell', async () => {
@@ -269,4 +299,15 @@ it('authenticates WS upgrades, injects only the server token, and forwards the b
   expect(JSON.stringify(log.mock.calls)).not.toMatch(/server-only-token|browser-token/)
   registry.find.mockResolvedValueOnce(undefined)
   expect(await upgrade(headers)).toBe(404)
+})
+
+it('answers /api/agents with the last agents found, and finds them again for the next ask', async () => {
+  const { call } = await fixture()
+  const first = [{ name: 'pi' as const, label: 'Pi', version: '1', models: [] }]
+  const second = [...first, { name: 'codex' as const, label: 'Codex', version: '2', models: [{ id: 'gpt', name: 'GPT' }] }]
+  vi.mocked(detectAgents).mockResolvedValueOnce(first).mockResolvedValue(second)
+  expect(await (await call('/api/agents')).json()).toEqual(first)
+  // Still the last list, while the second look runs; then what it found.
+  expect(await (await call('/api/agents')).json()).toEqual(first)
+  expect(await (await call('/api/agents')).json()).toEqual(second)
 })

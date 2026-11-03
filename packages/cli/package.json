@@ -41,10 +41,12 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@pierre/highlights": "catalog:frontend",
     "@pulls.review/core": "workspace:^",
     "chokidar": "catalog:build",
     "devframe": "catalog:frontend",
     "h3": "catalog:frontend",
+    "picomatch": "catalog:frontend",
     "unstorage": "catalog:frontend",
     "valibot": "catalog:frontend"
   },

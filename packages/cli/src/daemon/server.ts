@@ -1,3 +1,4 @@
+import type { H3Event } from 'h3'
 import type { Duplex } from 'node:stream'
 import type { WorktreeServers } from './children'
 import type { CommitWatcher } from './commits'
@@ -8,8 +9,10 @@ import type { SettingsStore } from './settings'
 import process from 'node:process'
 import { bodyLimit, H3, HTTPError, proxyRequest, readBody } from 'h3'
 import * as v from 'valibot'
+import { detectAgents } from '../agents'
 import { routeId } from './proxy'
-import { worktrees } from './registry'
+import { worktreeId, worktrees } from './registry'
+import { ColorsSchema, createReviewCaches, readFullFile, readReview, ReviewError, setReviewed } from './review'
 import { COMMAND, PWA_PROTOCOL } from './schema'
 import { COOKIE, createLaunchTokens, hasSession, requestGuard } from './security'
 import { agentChoice, SharedSettingsSchema } from './settings'
@@ -18,6 +21,8 @@ import { createShellFiles, MANIFEST, SERVICE_WORKER } from './shell'
 const pathSchema = v.object({ path: v.pipe(v.string(), v.minLength(1), v.maxLength(4096)) })
 // The page inside the worktree's review, as `pageFor` picks it.
 const launchSchema = v.object({ ...pathSchema.entries, page: v.optional(v.pipe(v.string(), v.startsWith('/'), v.maxLength(4096)), '/') })
+// A review page of a worktree, for the Herdr pane (plans/fork/04).
+const reviewSchema = v.object({ ...pathSchema.entries, page: v.pipe(v.string(), v.startsWith('/'), v.maxLength(4096)) })
 
 export function createDaemonApp(options: {
   origin: string
@@ -25,7 +30,7 @@ export function createDaemonApp(options: {
   /** The built client: the shell page and its assets. */
   client: string
   registry: Pick<RepoRegistry, 'repos' | 'add' | 'addCurrent' | 'remove' | 'find'>
-  children: Pick<WorktreeServers, 'get'>
+  children: Pick<WorktreeServers, 'get' | 'peek'>
   commits: Pick<CommitWatcher, 'rescan' | 'subscribe'>
   settings: SettingsStore
   connections: Map<Duplex, string>
@@ -35,6 +40,10 @@ export function createDaemonApp(options: {
   const { origin, session, registry, children, commits, settings, connections, stop, log } = options
   const launches = createLaunchTokens()
   const shell = createShellFiles(options.client)
+  const caches = createReviewCaches()
+  /** The last agents found, and the detection under way; see `/api/agents`. */
+  let agents: Awaited<ReturnType<typeof detectAgents>> | undefined
+  let detecting: ReturnType<typeof detectAgents> | undefined
 
   /** `--analyze` with a local agent picked: the worktree server starts the run, so it needs no page to. */
   async function analyze(tree: Worktree, page: string) {
@@ -42,6 +51,32 @@ export function createDaemonApp(options: {
     if (choice)
       (await children.get(tree)).send({ type: 'analyze', page: page.split('?')[0]!, ...choice })
   }
+
+  /** The worktree a pane request names, registered on first use as a launch registers it. */
+  async function reviewTree(path: string): Promise<Worktree> {
+    const known = await registry.find(worktreeId(path))
+    if (known)
+      return known
+    const tree = await registry.addCurrent(path)
+    if (!tree)
+      throw new ReviewError(422, 'Not a git repository')
+    void commits.rescan()
+    return tree
+  }
+
+  /** A pane request: its body checked, its worktree found; a failure answers with its message for the pane to show. */
+  async function review<T extends { path: string }>(event: H3Event, schema: v.GenericSchema<unknown, T>, handle: (input: T, tree: Worktree) => Promise<unknown>) {
+    const parsed = v.safeParse(schema, await readBody(event))
+    if (!parsed.success)
+      return new Response('Invalid review request', { status: 400 })
+    try {
+      return await handle(parsed.output, await reviewTree(parsed.output.path))
+    }
+    catch (error) {
+      return new Response(error instanceof Error ? error.message : String(error), { status: error instanceof ReviewError ? error.status : 500 })
+    }
+  }
+
   const app = new H3({
     onError: error => new Response('Daemon request failed', { status: error.status }),
     onResponse(response, event) {
@@ -79,13 +114,22 @@ export function createDaemonApp(options: {
     return next()
   })
   app.get('/api/status', () => ({ pid: process.pid }))
-  app.use('/api/**', bodyLimit(8192))
+  // The pane's review request names the files it wants rows for: a large group's paths outgrow 8 KB.
+  const smallBody = bodyLimit(8192)
+  const reviewBody = bodyLimit(256 * 1024)
+  app.use('/api/**', (event, next) => (event.url.pathname === '/api/review' ? reviewBody : smallBody)(event, next))
   app.post('/api/stop', () => {
     setTimeout(stop, 25)
     return { stopping: true }
   })
   app.get('/api/repos', () => registry.repos())
   app.get('/api/settings', () => settings.read())
+  // The agent CLIs on PATH and their models, for the pane's analysis settings. Listing models takes seconds, so an ask
+  // gets the last list at once and starts finding them again: an agent installed since shows up on the next ask.
+  app.get('/api/agents', () => {
+    detecting ??= detectAgents().then(found => agents = found).finally(() => detecting = undefined)
+    return agents ?? detecting
+  })
   app.put('/api/settings', async (event) => {
     const parsed = v.safeParse(SharedSettingsSchema, await readBody(event))
     if (!parsed.success)
@@ -164,6 +208,32 @@ export function createDaemonApp(options: {
     const token = launches.issue(path)
     return { url: `${origin}/login?token=${token}`, path }
   })
+  app.post('/api/review', event => review(event, v.object({ ...reviewSchema.entries, colors: ColorsSchema, rows: v.optional(v.pipe(v.array(v.string()), v.maxLength(5000))) }), async ({ page, colors, rows }, tree) => readReview({
+    cwd: tree.path,
+    page,
+    colors,
+    cache: await caches(tree.path),
+    // No server started yet: nothing can be running.
+    running: key => Promise.resolve(children.peek(tree)).then(server => server?.running(key) ?? {}).catch(() => ({})),
+    agent: !!agentChoice(await settings.read()),
+    rows,
+  })))
+  app.post('/api/review/analyze', event => review(event, v.object({ ...reviewSchema.entries, force: v.optional(v.boolean()) }), async ({ page, force }, tree) => {
+    const choice = agentChoice(await settings.read())
+    if (!choice) {
+      throw new ReviewError(409, 'No local agent is set up: pick one in the review settings')
+    }
+    const server = await children.get(tree)
+    server.send({ type: 'analyze', page, ...choice, force })
+    return { started: true }
+  }))
+  app.post('/api/review/reviewed', event => review(event, v.object({ ...reviewSchema.entries, shas: v.array(v.string()), reviewed: v.boolean() }), async ({ page, shas, reviewed }, tree) => {
+    await setReviewed({ cwd: tree.path, page, cache: await caches(tree.path), shas, reviewed })
+    return { reviewed }
+  }))
+  app.post('/api/review/file', event => review(event, v.object({ ...reviewSchema.entries, file: v.string(), colors: ColorsSchema }), async ({ page, file, colors }, tree) => ({
+    rows: await readFullFile({ cwd: tree.path, page, path: file, colors }),
+  })))
   // The tab shell (plans/fork/02); each tab is a review under `/r/<id>/`.
   app.get('/', () => shell.page())
   app.get('/sw.js', () => new Response(SERVICE_WORKER, { headers: { 'Content-Type': 'text/javascript; charset=utf-8' } }))

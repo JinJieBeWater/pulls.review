@@ -26,7 +26,7 @@ export async function targetForPage(cwd: string, page: string): Promise<string |
  * `--analyze` without a page (plans/fork/03): starts the analysis a page would, keyed the same,
  * so a page finds and follows it. Keeps a running run and a result made for the current head.
  */
-export async function analyzePage(call: LocalCall, diffs: DiffCache, cwd: string, { page, agent, model, locale }: WorktreeAnalyze): Promise<void> {
+export async function analyzePage(call: LocalCall, diffs: DiffCache, cwd: string, { page, agent, model, locale, force }: WorktreeAnalyze): Promise<void> {
   const target = await targetForPage(cwd, page)
   if (target === undefined)
     return
@@ -36,7 +36,7 @@ export async function analyzePage(call: LocalCall, diffs: DiffCache, cwd: string
   const diff: DiffsPayload = await call(LOCAL_RPC.sourceFetch, { target })
   const head = diff.head?.sha ?? ''
   const cached = await diffs.get(key)
-  if (cached?.analyzedBy.llm && cached.analyzedBy.llm.headSha === diff.head?.sha)
+  if (!force && cached?.analyzedBy.llm && cached.analyzedBy.llm.headSha === diff.head?.sha)
     return
   // The run saves its result onto the cache entry: there must be one, for the diff it analyzes.
   if (cached?.headSha !== head)

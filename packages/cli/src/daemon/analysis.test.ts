@@ -61,9 +61,12 @@ it('starts a keyed run for a page, unless one is running or the cached result is
   await diffs.setAnalyzedResult('key', 'llm', { source: 'llm', groups: [], schemaVersion: 1, generatedAt: '', headSha: 'h1' })
   await analyzePage(call, diffs, '/repo', request)
   expect(analyzed()).toHaveLength(1)
+  // The Herdr pane's re-analyze runs again over a current result.
+  await analyzePage(call, diffs, '/repo', { ...request, force: true })
+  expect(analyzed()).toHaveLength(2)
 
   head.sha = 'h2'
   await analyzePage(call, diffs, '/repo', request)
-  expect(analyzed()).toHaveLength(2)
+  expect(analyzed()).toHaveLength(3)
   expect((await diffs.get('key'))?.headSha).toBe('h2')
 })

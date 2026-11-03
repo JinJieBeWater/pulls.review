@@ -1,5 +1,6 @@
 import { LOCAL_AGENT_NAMES } from '@pulls.review/core/analyze'
 import { LOCALES } from '@pulls.review/core/locales'
+import { AnalyzeProgressSchema } from '@pulls.review/core/types'
 import * as v from 'valibot'
 
 /** The fork's command on npm (`npm/publish.mjs`), apart from upstream's `pulls.review` so both can be installed. */
@@ -38,8 +39,16 @@ export const WorktreeAnalyzeSchema = v.object({
   agent: v.picklist(LOCAL_AGENT_NAMES),
   model: v.string(),
   locale: LocaleSchema,
+  /** Analyze again even when the cached result is for the current head (the Herdr pane's re-analyze, plans/fork/04). */
+  force: v.optional(v.boolean()),
 })
 export type WorktreeAnalyze = v.InferOutput<typeof WorktreeAnalyzeSchema>
+
+/** The daemon asks a worktree server which analysis runs for a cache key (plans/fork/04). */
+export const WorktreeRunningSchema = v.object({ type: v.literal('running'), id: v.number(), key: v.string() })
+export const RunningStateSchema = v.object({ streamId: v.optional(v.string()), progress: v.optional(AnalyzeProgressSchema), error: v.optional(v.string()) })
+export type RunningState = v.InferOutput<typeof RunningStateSchema>
+export const WorktreeRunningReplySchema = v.object({ type: v.literal('running'), id: v.number(), state: RunningStateSchema })
 const StartupFailureSchema = v.object({ type: v.literal('error'), message: v.string() })
 
 export const DaemonMessageSchema = v.variant('type', [

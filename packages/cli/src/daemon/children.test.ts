@@ -31,8 +31,10 @@ afterEach(() => {
 it('starts one server per worktree with a private IPC token and the correct cwd', async () => {
   const { process: first, send } = child(12345)
   const servers = createWorktreeServers()
+  expect(servers.peek(tree)).toBeUndefined()
   const ready = servers.get(tree)
   expect(servers.get(tree)).toBe(ready)
+  expect(servers.peek(tree)).toBe(ready)
   expect(fork).toHaveBeenCalledTimes(1)
   expect(fork).toHaveBeenCalledWith(expect.any(URL), [], {
     cwd: tree.path,
@@ -42,9 +44,17 @@ it('starts one server per worktree with a private IPC token and the correct cwd'
   expect(send).toHaveBeenCalledWith({ token: expect.stringMatching(/^[a-f0-9]{64}$/), basePath: '/r/repo-123/' })
   first.emit('message', { type: 'ready', port: 1234 })
   const server = await ready
-  expect(server).toEqual({ port: 1234, token: send.mock.calls[0][0].token, send: expect.any(Function) })
+  expect(server).toEqual({ port: 1234, token: send.mock.calls[0][0].token, send: expect.any(Function), running: expect.any(Function) })
   server.send({ type: 'analyze', page: '/worktree', agent: 'pi', model: '', locale: 'en' })
   expect(send).toHaveBeenLastCalledWith({ type: 'analyze', page: '/worktree', agent: 'pi', model: '', locale: 'en' })
+  // Replies are matched to their request by id, whatever order they come back in.
+  const [one, two] = [server.running('k1'), server.running('k2')]
+  const ids = send.mock.calls.slice(-2).map(([message]) => message.id)
+  expect(send.mock.calls.slice(-2).map(([message]) => message.key)).toEqual(['k1', 'k2'])
+  first.emit('message', { type: 'running', id: ids[1], state: {} })
+  first.emit('message', { type: 'running', id: ids[0], state: { streamId: 's' } })
+  expect(await one).toEqual({ streamId: 's' })
+  expect(await two).toEqual({})
   first.emit('exit', 0)
   expect(process.kill).toHaveBeenCalledWith(-12345, 'SIGKILL')
 })
