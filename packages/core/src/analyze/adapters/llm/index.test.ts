@@ -82,8 +82,8 @@ describe('resolveModel', () => {
 })
 
 describe('runLlmAnalysis', () => {
-  it('reads diffs, then returns the submitted grouping and the full transcript', async () => {
-    const diff = diffWithFiles(file('a.ts'), file('b.ts'))
+  it('reads diffs, then returns the submitted grouping, stamped with the head it analyzed, and the full transcript', async () => {
+    const diff = { ...diffWithFiles(file('a.ts'), file('b.ts')), head: { sha: 'h1', ref: 'feat' } }
     faux.setResponses([read('a.ts'), submit(oneGroup('a.ts', 'b.ts'))])
 
     const { result, transcript } = await analyze(diff)
@@ -92,6 +92,7 @@ describe('runLlmAnalysis', () => {
     expect(result.overallSummary).toBe('Adds a feature.')
     expect(result.groups).toEqual([{ key: 'feature', label: 'Feature', category: 'core', filePaths: ['a.ts', 'b.ts'] }])
     expect(result.locale).toBe('en')
+    expect(result.headSha).toBe('h1')
     expect(transcript[0]).toMatchObject({ role: 'system', content: AGENT_SYSTEM_PROMPT })
     expect(transcript.find(message => message.role !== 'system')).toMatchObject({ role: 'user', content: buildAnalysisPrompt(diff, 'en') })
     expect(transcript.filter(message => message.role === 'toolResult')).toHaveLength(2)

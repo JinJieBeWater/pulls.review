@@ -142,6 +142,8 @@ export const GroupedResultSchema = v.object({
   sharedBy: v.optional(v.string()),
   /** BCP 47 tag of the language the summaries were written in; absent on rule-based results and on llm results from before the setting existed. */
   locale: v.optional(v.string()),
+  /** `head.sha` of the diff an llm result analyzed; absent on results from before the field existed. */
+  headSha: v.optional(v.string()),
 })
 export type GroupedResult = v.InferOutput<typeof GroupedResultSchema>
 

@@ -59,7 +59,7 @@ export function toGroupedResult(diff: DiffsPayload, analysis: Analysis, model: s
     groups: reconcile(diff, analysis),
     schemaVersion: LLM_SCHEMA_VERSION,
   }
-  return { ...normalizeGroupedResult('llm', core, model), locale }
+  return { ...normalizeGroupedResult('llm', core, model), locale, headSha: diff.head?.sha }
 }
 
 export function modelStamp(resolved: ResolvedModel): string {
