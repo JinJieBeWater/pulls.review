@@ -10,6 +10,14 @@ export interface LlmAnalyzeRun {
   agent?: AgentSessionRef
 }
 
+export interface LlmRunOptions extends LlmAnalyzeOptions {
+  /** The diff's cache key: a server run is found again by it, and saves its result under it. */
+  key?: string
+}
+
+/** `signal.reason` when the page stops following a run without meaning to stop it. */
+export const DETACHED = 'detached'
+
 export interface LlmChatInput {
   diff: DiffsPayload
   /** The transcript to continue; its last message is the user's turn, or the failed reply `text` absent retries from. */
@@ -30,7 +38,9 @@ export interface LlmChatInput {
 export interface LlmRunner {
   /** Reactive: reads Settings (and, for the server, what it found). */
   isSetup: () => boolean
-  analyze: (diff: DiffsPayload, options: LlmAnalyzeOptions) => Promise<LlmAnalyzeRun>
+  analyze: (diff: DiffsPayload, options: LlmRunOptions) => Promise<LlmAnalyzeRun>
+  /** The run the server is still doing for `key`, to follow; `undefined` when there is none. A browser run ends with its page. */
+  attach?: (key: string) => Promise<((options: LlmRunOptions) => Promise<LlmAnalyzeRun>) | undefined>
   /** Resolves to the whole transcript after the reply; an error reply is a message with `stopReason: 'error'`, not a rejection. */
   chat: (input: LlmChatInput) => Promise<AgentMessage[]>
 }

@@ -42,7 +42,7 @@ export function createDiffsStore(source: DiffSource, opts: DiffsStoreOptions): D
   const llm = shallowRef<DiffsStoreLlm>()
 
   if (getCurrentScope())
-    onScopeDispose(() => llm.value?.abort())
+    onScopeDispose(() => llm.value?.detach())
 
   // SWR seeds for the sub-stores, set when a cached PR entry carries them.
   let cachedReviewData: ReviewData | undefined
@@ -237,6 +237,7 @@ export function createDiffsStore(source: DiffSource, opts: DiffsStoreOptions): D
       void reviews?.load()
       void shared?.discover(opts.from)
       await llmReady
+      void llm.value?.resume()
     }
     catch (err) {
       error.value = err instanceof Error ? err : new Error(String(err))

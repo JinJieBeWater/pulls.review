@@ -34,6 +34,8 @@ export const LOCAL_RPC = {
   /** Analysis and chat through a local agent CLI (`plans/11-local-agents.md`). */
   agentList: 'agent-list',
   agentAnalyze: 'agent-analyze',
+  /** The analysis still running for a cache key, for a page that reloaded or opened since. */
+  agentRunning: 'agent-running',
   agentChat: 'agent-chat',
   agentAbort: 'agent-abort',
 } as const

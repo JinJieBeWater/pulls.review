@@ -1,13 +1,14 @@
 import type { AgentMessage } from '@earendil-works/pi-agent-core'
 import type { AgentStreamEvent } from '@pulls.review/core/local-rpc'
 import type { AgentSessionRef, DiffsPayload, GroupedResult } from '@pulls.review/core/types'
-import type { LlmRunner } from '../analyze/llm-runner'
+import type { LlmAnalyzeRun, LlmRunner, LlmRunOptions } from '../analyze/llm-runner'
 import type { LocalAgents } from '../analyze/local-agents'
 import type { LocalRpc } from './connection'
 import { diagnostics } from '@pulls.review/core/diagnostics'
 import { AGENT_SESSION_LOST, AgentStreamEventSchema, LOCAL_AGENT_CHANNEL, LOCAL_RPC, LocalAgentInfoSchema } from '@pulls.review/core/local-rpc'
 import * as v from 'valibot'
 import { ref } from 'vue'
+import { DETACHED } from '../analyze/llm-runner'
 import { settings } from '../state/settings'
 
 /** What one agent run reported before it ended. */
@@ -48,7 +49,8 @@ export function createAgentLlmRunner(rpc: LocalRpc, browser: LlmRunner): LlmRunn
     const reader = rpc.streaming.subscribe<unknown>(LOCAL_AGENT_CHANNEL, streamId)
     const collected: Collected = { messages: [] }
     const abort = () => {
-      void rpc.call(LOCAL_RPC.agentAbort, { streamId })
+      if (signal.reason !== DETACHED)
+        void rpc.call(LOCAL_RPC.agentAbort, { streamId })
       reader.cancel()
     }
     signal.addEventListener('abort', abort)
@@ -73,23 +75,30 @@ export function createAgentLlmRunner(rpc: LocalRpc, browser: LlmRunner): LlmRunn
     throw new Error('The agent run ended without a result.')
   }
 
+  async function analysis(streamId: string, options: LlmRunOptions): Promise<LlmAnalyzeRun> {
+    const run = await follow(streamId, options.signal ?? new AbortController().signal, (event) => {
+      if (event.kind === 'progress')
+        options.onProgress?.(event.progress)
+      else if (event.kind === 'messages')
+        options.onTranscript?.(event.messages)
+    })
+    if (!run.result)
+      throw new Error('The agent run ended without a result.')
+    return { result: run.result, transcript: run.messages, agent: run.agent }
+  }
+
   return {
     isSetup: () => chosen() !== undefined || browser.isSetup(),
     async analyze(diff, options) {
       const choice = chosen()
       if (!choice)
         return browser.analyze(diff, options)
-      const signal = options.signal ?? new AbortController().signal
-      const { streamId } = v.parse(v.object({ streamId: v.string() }), await rpc.call(LOCAL_RPC.agentAnalyze, { ...choice, diff, locale: settings.value.locale }))
-      const run = await follow(streamId, signal, (event) => {
-        if (event.kind === 'progress')
-          options.onProgress?.(event.progress)
-        else if (event.kind === 'messages')
-          options.onTranscript?.(event.messages)
-      })
-      if (!run.result)
-        throw new Error('The agent run ended without a result.')
-      return { result: run.result, transcript: run.messages, agent: run.agent }
+      const { streamId } = v.parse(v.object({ streamId: v.string() }), await rpc.call(LOCAL_RPC.agentAnalyze, { ...choice, diff, locale: settings.value.locale, key: options.key }))
+      return analysis(streamId, options)
+    },
+    async attach(key) {
+      const { streamId } = v.parse(v.object({ streamId: v.optional(v.string()) }), await rpc.call(LOCAL_RPC.agentRunning, { key }))
+      return streamId ? options => analysis(streamId, options) : undefined
     },
     async chat(input) {
       const choice = chosen()

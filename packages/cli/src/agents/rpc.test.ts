@@ -4,7 +4,9 @@ import type { AgentChannel } from './rpc'
 import { mkdtempSync, realpathSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { createCacheRepositories } from '@pulls.review/core/cache'
 import { LOCAL_RPC } from '@pulls.review/core/local-rpc'
+import { createStorage } from 'unstorage'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { installFakeAgents } from '../../test/fake-agents'
 import { agentRpcFunctions } from './rpc'
@@ -20,7 +22,7 @@ function memoryChannel() {
       let close!: () => void
       const done = new Promise<void>(resolve => close = resolve)
       streams.set(id, { events, done })
-      return { id, signal: new AbortController().signal, write: event => events.push(event), close }
+      return { id, write: event => events.push(event), close }
     },
   }
   return { channel, stream: (id: string) => streams.get(id)! }
@@ -37,6 +39,7 @@ const diff: DiffsPayload = {
 
 let fake: ReturnType<typeof installFakeAgents>
 let dir: string
+let cache: ReturnType<typeof createCacheRepositories>
 
 function call(functions: ReturnType<typeof agentRpcFunctions>, name: string, ...args: unknown[]) {
   const fn = functions.find(candidate => candidate.name === name)
@@ -47,6 +50,7 @@ function call(functions: ReturnType<typeof agentRpcFunctions>, name: string, ...
 beforeEach(() => {
   fake = installFakeAgents()
   dir = mkdtempSync(join(tmpdir(), 'pulls-review-agent-rpc-'))
+  cache = createCacheRepositories(createStorage())
 })
 
 afterEach(() => {
@@ -56,7 +60,7 @@ afterEach(() => {
 
 describe('agent RPC', () => {
   it('lists agents with their models', async () => {
-    const functions = agentRpcFunctions({ cwd: dir, patchDir: join(dir, 'patches'), channel: memoryChannel().channel })
+    const functions = agentRpcFunctions({ cwd: dir, patchDir: join(dir, 'patches'), channel: memoryChannel().channel, diffs: cache.diffs })
     expect(await call(functions, LOCAL_RPC.agentList)).toEqual([
       expect.objectContaining({ name: 'claude', models: expect.arrayContaining([{ id: 'sonnet', name: 'Sonnet (latest)' }]) }),
       expect.objectContaining({ name: 'opencode' }),
@@ -68,7 +72,7 @@ describe('agent RPC', () => {
   it('accepts Codex over RPC and returns a resumable analysis', async () => {
     fake.replay('codex-analysis.jsonl')
     const { channel, stream } = memoryChannel()
-    const functions = agentRpcFunctions({ cwd: dir, patchDir: join(dir, 'patches'), channel })
+    const functions = agentRpcFunctions({ cwd: dir, patchDir: join(dir, 'patches'), channel, diffs: cache.diffs })
     const { streamId } = await call(functions, LOCAL_RPC.agentAnalyze, { agent: 'codex', diff, locale: 'en' }) as { streamId: string }
     await stream(streamId).done
     const events = stream(streamId).events
@@ -80,7 +84,7 @@ describe('agent RPC', () => {
   it('streams an analysis, ending with the result, and a GitHub diff runs outside the repository', async () => {
     fake.replay('claude-analysis.jsonl')
     const { channel, stream } = memoryChannel()
-    const functions = agentRpcFunctions({ cwd: dir, patchDir: join(dir, 'patches'), channel })
+    const functions = agentRpcFunctions({ cwd: dir, patchDir: join(dir, 'patches'), channel, diffs: cache.diffs })
 
     const { streamId } = await call(functions, LOCAL_RPC.agentAnalyze, { agent: 'claude', diff, locale: 'en' }) as { streamId: string }
     await stream(streamId).done
@@ -91,10 +95,31 @@ describe('agent RPC', () => {
     expect(fake.calls()[0]!.cwd).not.toBe(dir)
   })
 
+  it('keeps an analysis findable by its cache key while it runs, and saves its result there', async () => {
+    fake.replay('claude-analysis.jsonl')
+    process.env.FAKE_AGENT_SLEEP = '300'
+    await cache.diffs.putDiff('pr:o/r#1', diff, '')
+    const { channel, stream } = memoryChannel()
+    const functions = agentRpcFunctions({ cwd: dir, patchDir: join(dir, 'patches'), channel, diffs: cache.diffs })
+
+    const started = await call(functions, LOCAL_RPC.agentAnalyze, { agent: 'claude', diff, locale: 'en', key: 'pr:o/r#1' }) as { streamId: string }
+    expect(await call(functions, LOCAL_RPC.agentRunning, { key: 'pr:o/r#1' })).toEqual(started)
+    // Another tab asking for the same diff follows the same run.
+    expect(await call(functions, LOCAL_RPC.agentAnalyze, { agent: 'claude', diff, locale: 'en', key: 'pr:o/r#1' })).toEqual(started)
+    await stream(started.streamId).done
+    delete process.env.FAKE_AGENT_SLEEP
+
+    expect(fake.calls()).toHaveLength(1)
+    expect(await call(functions, LOCAL_RPC.agentRunning, { key: 'pr:o/r#1' })).toEqual({ streamId: undefined })
+    const entry = await cache.diffs.get('pr:o/r#1')
+    expect(entry?.analyzedBy.llm).toEqual(stream(started.streamId).events.find(event => event.kind === 'result')?.result)
+    expect(entry?.llmSession).toMatchObject({ chatStartIndex: entry!.llmSession!.messages.length, agent: { agent: 'claude' } })
+  })
+
   it('keeps the same GitHub workspace when pi resumes analysis for chat', async () => {
     fake.replay('pi-analysis.jsonl', 'pi-chat-answer.jsonl')
     const { channel, stream } = memoryChannel()
-    const functions = agentRpcFunctions({ cwd: dir, patchDir: join(dir, 'patches'), channel })
+    const functions = agentRpcFunctions({ cwd: dir, patchDir: join(dir, 'patches'), channel, diffs: cache.diffs })
 
     const analysis = await call(functions, LOCAL_RPC.agentAnalyze, { agent: 'pi', diff, locale: 'en' }) as { streamId: string }
     await stream(analysis.streamId).done
@@ -115,7 +140,7 @@ describe('agent RPC', () => {
     fake.replay()
     fake.exitWith(1, 'boom')
     const { channel, stream } = memoryChannel()
-    const functions = agentRpcFunctions({ cwd: dir, patchDir: join(dir, 'patches'), channel })
+    const functions = agentRpcFunctions({ cwd: dir, patchDir: join(dir, 'patches'), channel, diffs: cache.diffs })
 
     const failed = await call(functions, LOCAL_RPC.agentAnalyze, { agent: 'claude', diff, locale: 'en' }) as { streamId: string }
     await stream(failed.streamId).done
@@ -135,7 +160,7 @@ describe('agent RPC', () => {
     fake.replay()
     fake.exitWith(1, 'Error: Session not found')
     const { channel, stream } = memoryChannel()
-    const functions = agentRpcFunctions({ cwd: dir, patchDir: join(dir, 'patches'), channel })
+    const functions = agentRpcFunctions({ cwd: dir, patchDir: join(dir, 'patches'), channel, diffs: cache.diffs })
     const session = { messages: [{ role: 'user', content: 'analyze', timestamp: 0 }], chatStartIndex: 1, agent: { agent: 'opencode', id: 'gone' } }
 
     const { streamId } = await call(functions, LOCAL_RPC.agentChat, { agent: 'opencode', diff, locale: 'en', session, text: 'why?' }) as { streamId: string }

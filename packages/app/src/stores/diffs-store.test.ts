@@ -9,6 +9,8 @@ import { serializeRef } from '@pulls.review/core/types'
 import { createStorage } from 'unstorage'
 import memoryDriver from 'unstorage/drivers/memory'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { effectScope } from 'vue'
+import { DETACHED } from '../analyze/llm-runner'
 import { autoRefresh } from '../state/auto-refresh'
 import { createDiffsStore } from './diffs-store'
 
@@ -140,6 +142,22 @@ describe('createDiffsStore llm session/progress/error', () => {
 
     expect(store.llm!.isAnalyzing).toBe(false)
     expect(store.llm!.error).toBeUndefined()
+  })
+
+  it('follows a run still going for the diff after a reload, and only detaches from it when disposed', async () => {
+    let signal: AbortSignal | undefined
+    const attach = vi.fn(async (_key: string) => (options: { signal?: AbortSignal }) => new Promise<never>((_, reject) => {
+      signal = options.signal
+      signal?.addEventListener('abort', () => reject(new DOMException('Aborted', 'AbortError')))
+    }))
+    const scope = effectScope()
+    const store = scope.run(() => createDiffsStore(createPasteSource(PATCH_TEXT), { cache, llm: { ...llm, attach } }))!
+    await store.load()
+
+    await vi.waitFor(() => expect(store.llm!.isAnalyzing).toBe(true))
+    expect(attach).toHaveBeenCalledWith(serializeRef(store.diff!.ref))
+    scope.stop()
+    expect(signal?.reason).toBe(DETACHED)
   })
 
   it('never persists the rule-based result, recomputing it from the diff instead', async () => {

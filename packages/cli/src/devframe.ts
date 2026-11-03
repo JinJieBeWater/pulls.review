@@ -1,8 +1,10 @@
 import { join } from 'node:path'
 import process from 'node:process'
 import { fileURLToPath } from 'node:url'
+import { createCacheRepositories } from '@pulls.review/core/cache'
 import { LOCAL_AGENT_CHANNEL, LOCAL_DEVFRAME_ID } from '@pulls.review/core/local-rpc'
 import { defineDevframe } from 'devframe'
+import { createStorage } from 'unstorage'
 import pkg from '../package.json' with { type: 'json' }
 import { agentRpcFunctions } from './agents/rpc'
 import { localRpcFunctions } from './rpc'
@@ -29,17 +31,19 @@ export default defineDevframe({
   // which page opens.
   async setup(ctx) {
     const scope = ctx.scope(LOCAL_DEVFRAME_ID)
+    const driver = await createRepoCacheDriver(ctx.cwd)
     const functions = [
       ...localRpcFunctions({
         cwd: ctx.cwd,
-        driver: await createRepoCacheDriver(ctx.cwd),
+        driver,
         env: process.env,
       }),
       ...agentRpcFunctions({
         cwd: ctx.cwd,
         patchDir: join(await repoCacheDir(ctx.cwd), 'agent'),
-        // The browser subscribes after the call that started the run returns: replay what it missed.
+        // The browser subscribes after the call that started the run returns, or after a reload: replay what it missed.
         channel: scope.rpc.streaming.create(LOCAL_AGENT_CHANNEL, { replayWindow: 4096 }),
+        diffs: createCacheRepositories(createStorage({ driver })).diffs,
       }),
     ]
     for (const fn of functions)

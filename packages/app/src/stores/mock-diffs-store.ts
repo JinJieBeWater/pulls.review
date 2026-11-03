@@ -273,7 +273,9 @@ export function createMockDiffsStore(input: {
           transcript: llmTranscript,
           error: llmError,
           reanalyze,
+          resume: async () => {},
           abort,
+          detach: abort,
           chat,
         })
       : undefined,

@@ -24,8 +24,12 @@ export interface DiffsStoreLlm {
   readonly transcript: AgentMessage[]
   readonly error: Error | undefined
   reanalyze: () => Promise<void>
+  /** Follows the run the server is still doing for this diff, started before a reload or in another tab. */
+  resume: () => Promise<void>
   /** Stops the in-flight run (and any chat) - leaves `error` unset. */
   abort: () => void
+  /** Stops following the in-flight run without stopping it: a server run carries on and can be resumed. */
+  detach: () => void
   readonly chat: {
     readonly available: boolean
     readonly messages: AgentMessage[]

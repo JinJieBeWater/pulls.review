@@ -2,9 +2,10 @@ import type { AgentMessage } from '@earendil-works/pi-agent-core'
 import type { CacheRepositories, LlmSession } from '@pulls.review/core/cache'
 import type { DiffsPayload, GroupedResult } from '@pulls.review/core/types'
 import type { Ref } from 'vue'
-import type { LlmRunner } from '../analyze/llm-runner'
+import type { LlmAnalyzeRun, LlmRunner, LlmRunOptions } from '../analyze/llm-runner'
 import type { DiffsStoreLlm, LlmProgress } from './types'
 import { computed, reactive, ref, shallowRef } from 'vue'
+import { DETACHED } from '../analyze/llm-runner'
 import { useLlmChat } from '../composables/useLlmChat'
 import { describeProgress, localizeError } from '../i18n/core-messages'
 
@@ -58,21 +59,18 @@ export function createLlmStore(opts: LlmStoreOptions): DiffsStoreLlm {
     onGroupingUpdate: setResult,
   })
 
-  async function reanalyze() {
-    const currentDiff = opts.diff.value
-    if (!currentDiff)
-      return
-    chat.stop()
+  async function track(run: (options: LlmRunOptions) => Promise<LlmAnalyzeRun>) {
     error.value = undefined
     transcript.value = []
     isAnalyzing.value = true
     const controller = new AbortController()
     abortController = controller
     try {
-      const { result, transcript: messages, agent } = await opts.runner.analyze(currentDiff, {
+      const { result, transcript: messages, agent } = await run({
         onProgress: next => progress.value = { step: next.step, message: describeProgress(next) },
         onTranscript: next => transcript.value = next,
         signal: controller.signal,
+        key: opts.getCacheKey(),
       })
       if (controller.signal.aborted)
         return
@@ -92,9 +90,29 @@ export function createLlmStore(opts: LlmStoreOptions): DiffsStoreLlm {
     await opts.showLlmResult()
   }
 
+  async function reanalyze() {
+    const currentDiff = opts.diff.value
+    if (!currentDiff)
+      return
+    chat.stop()
+    await track(options => opts.runner.analyze(currentDiff, options))
+  }
+
+  async function resume() {
+    const key = opts.getCacheKey()
+    const follow = key && !isAnalyzing.value ? await opts.runner.attach?.(key) : undefined
+    if (follow)
+      await track(follow)
+  }
+
   function abort() {
     chat.stop()
     abortController?.abort()
+  }
+
+  function detach() {
+    chat.stop()
+    abortController?.abort(DETACHED)
   }
 
   return reactive({
@@ -104,7 +122,9 @@ export function createLlmStore(opts: LlmStoreOptions): DiffsStoreLlm {
     transcript,
     error,
     reanalyze,
+    resume,
     chat: reactive(chat),
     abort,
+    detach,
   }) as DiffsStoreLlm
 }
