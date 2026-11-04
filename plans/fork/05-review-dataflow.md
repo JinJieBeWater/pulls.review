@@ -1,6 +1,8 @@
 # Fork plan 05: what a click on the Review bar sets going
 
-Status: **in progress** (2026-11-05). Fork-only, following [plan 04](./04-herdr-review-pane.md).
+Status: **built** (2026-11-05), checked with each mod's check, the daemon's tests and the installed
+daemon's answers to the older-daemon cases; not yet clicked through in a window. Fork-only, following
+[plan 04](./04-herdr-review-pane.md).
 
 ## Problem
 
