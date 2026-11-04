@@ -221,9 +221,9 @@ export function reviewBar(view, t, stop) {
   const isShown = (args) => here?.base === argPage(args, r.branch);
   // The accessibility label says what each count compares, which the short label can't.
   // The count carries the color; what it counts stays quiet beside it.
-  // 24, the outline's inside: a hover card's wrapper has no height for h_full to fill. Its label is the name's first part.
+  // 22, the outline's inside: a hover card's wrapper has no height for h_full to fill. Its label is the name's first part.
   // Compact, the label gives back the words the count lost, `· merged?` included.
-  const item = ([id, count, noun, ansi, name, args], last) => tip(view.reviewHover, t, id, compact && noun ? `${count} ${noun}` : name.split(": ")[0], h_flex().id(id).h(24).px(8).gap(6).flex_none().items_center()
+  const item = ([id, count, noun, ansi, name, args], last) => tip(view.reviewHover, t, id, compact && noun ? `${count} ${noun}` : name.split(": ")[0], h_flex().id(id).h(22).px(8).gap(6).flex_none().items_center()
     .text_size(12).text_color(t.dim).hover(s => s.bg(t.hover).text_color(t.foreground)).role("button").accessibility_label(isShown(args) ? `${name}, shown` : name).when(isShown(args), el => el.bg(t.hover).text_color(t.foreground))
     // Herdr has no group hover. Entering the next segment can report before leaving this one.
     .on_hover((on, cx) => { if (on) view.reviewHover = id; else if (view.reviewHover === id) view.reviewHover = null; cx.notify(); })
@@ -259,19 +259,19 @@ export function reviewBar(view, t, stop) {
     } finally { view.readingPicks = false; } });
   };
   // One commit shown: its place, opening the menu, between steps to the older and newer ones.
-  const step = (id, glyph, label, commit, last) => h_flex().id(id).h(24).px(6).flex_none().items_center().text_size(12).text_color(commit ? t.dim : t.border).role("button").accessibility_label(label)
+  const step = (id, glyph, label, commit, last) => h_flex().id(id).h(22).px(6).flex_none().items_center().text_size(12).text_color(commit ? t.dim : t.border).role("button").accessibility_label(label)
     .when(Boolean(commit), el => el.hover(s => s.bg(t.hover).text_color(t.foreground)).on_click(() => showPage(within, `/commit/${commit.sha}`)))
     .when(Boolean(last), el => el.rounded_r(6)).child(glyph);
   const place = !sha ? [] : [div().w(1).h(14).flex_none().bg(t.border),
     step("commit-older", "‹", "Older commit", index > 0 && list[index - 1]),
-    h_flex().id("review-commits").h(24).px(2).flex_none().items_center().text_size(12).text_color(t.foreground).hover(s => s.bg(t.hover)).role("button").accessibility_label("Pick another commit of this review")
+    h_flex().id("review-commits").h(22).px(2).flex_none().items_center().text_size(12).text_color(t.foreground).hover(s => s.bg(t.hover)).role("button").accessibility_label("Pick another commit of this review")
       .on_mouse_down("left", pressed).on_click(openMenu)
       .child(index === -1 ? sha.slice(0, 7) : compact ? `${index + 1}/${list.length}` : `Commit ${index + 1} of ${list.length}`),
     step("commit-newer", "›", "Newer commit", index >= 0 && list[index + 1], true)];
   // Outlined, not filled: a fill would read as an active tab. Each part's fill runs to the outline and the rules.
-  return h_flex().id("pulls-review").h(26).flex_none().items_center().rounded(6).border(1).border_color(t.border).on_mouse_down("left", stop)
+  return h_flex().id("pulls-review").h(24).flex_none().items_center().rounded(6).border(1).border_color(t.border).on_mouse_down("left", stop)
     // Stays with no counts: on a clean default branch it's the only way in.
-    .child(tip(view.hot, t, "review-pick", "Change what to review", h_flex().id("review-pick").h(24).px(5).flex_none().items_center().rounded_l(6).when(!segments.length && !sha, el => el.rounded_r(6))
+    .child(tip(view.hot, t, "review-pick", "Change what to review", h_flex().id("review-pick").h(22).px(5).flex_none().items_center().rounded_l(6).when(!segments.length && !sha, el => el.rounded_r(6))
       .hover(s => s.bg(t.hover)).on_hover(glow(view, "review-pick")).role("button").accessibility_label("Change what to review")
       .on_mouse_down("left", pressed).on_click(openMenu)
       // image, not svg: svg would draw the logo in one tint.
