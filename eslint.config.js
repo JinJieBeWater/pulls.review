@@ -11,6 +11,8 @@ export default antfu(
       'packages/app/src/components/diff/pierre-diffs-core.css',
       'packages/app/test/fixtures/real/**',
       '**/__snapshots__/**',
+      // Fork-only: Herdr App mods (plans/fork/04), in Herdr's own style.
+      'mods/**',
     ],
     vue: {
       overrides: {
