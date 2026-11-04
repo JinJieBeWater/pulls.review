@@ -608,6 +608,10 @@ const timers = [], tick = () => timers.splice(0).forEach(f => f(cx));
   delete target().hunks;
   pane.load(cx); await settle();
   assert.deepEqual(plain(bodies.at(-1).rows), [first]);
+  // A read that says what the one shown does changes nothing: the list isn't rebuilt, and its files stay the ones marks change.
+  const shownReview = pane.review, shownVersion = pane.version;
+  pane.load(cx, true); await settle();
+  assert.ok(pane.review === shownReview && pane.version === shownVersion);
   // A read from before a reviewed mark landed doesn't undo it on screen.
   let release;
   mainScope.review = (root, route, body) => route === "/api/review/reviewed" ? new Promise(r => { release = r; }) : daemon(root, route, body);

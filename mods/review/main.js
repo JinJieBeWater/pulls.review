@@ -245,6 +245,10 @@ export default class ReviewPane extends View {
     }
     const old = new Map(this.review?.files.map(file => [file.path, file]));
     for (const file of r.files) if (!file.hunks && old.get(file.path)?.sha === file.sha) file.hunks = old.get(file.path).hunks;
+    // A read that says what the one shown does changes nothing: the list isn't rebuilt, and its files stay the ones marks change.
+    const said = (x) => JSON.stringify([x.key, x.title, x.base, x.head, x.commits, x.source, x.groups, x.analysis,
+      x.files.map(f => [f.path, f.sha, f.reviewed, f.changed, Boolean(f.hunks)])]);
+    if (this.review && said(r) === said(this.review)) return;
     for (const path of this.full.keys()) if (old.get(path)?.sha !== r.files.find(file => file.path === path)?.sha) this.full.delete(path);
     this.review = r;
     if (r.analysis.state === "running") this.startingUntil = 0;
