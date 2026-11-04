@@ -78,7 +78,8 @@ it('reads a page as the pane draws it, keeps reviewed marks, and flags a reviewe
   const cache = createCacheRepositories(createStorage())
   const read = (running = {}) => readReview({ cwd: root, page: '/worktree', colors, cache, running: async () => running, agent: true })
   await writeFile(join(root, 'a.ts'), 'const a = 22\n/* one\n   two */\nexport { a }\n')
-  await writeFile(join(root, 'a.test.ts'), 'it("b", () => {})\n')
+  // Another size: git takes a same-size file written as it commits for unchanged.
+  await writeFile(join(root, 'a.test.ts'), 'it("bb", () => {})\n')
 
   const first = await read()
   expect(first.source).toBe('rule-based')
