@@ -2,7 +2,7 @@
 // installed app or the browser) or the official CLI.
 
 import { spaces, panes, focused, exec, hc, window, notify, closeOverlay, run, shared, setShared, appHome, readTextFile } from "herdr";
-import { browserPath, git, reviewLocation } from "./bar.js";
+import { argPage, git, reviewLocation } from "./bar.js";
 
 // `open` in this folder's config.json (see mods/README.md):
 // "herdr":    the fork's daemon, drawn in a pane beside the agent (the review mod).
@@ -34,13 +34,12 @@ async function core([command, ...args]) {
 
 // The page the CLI opens for `args` (its pageFor), for a server that is already running.
 async function pageFor(root, args) {
-  if (args[0] === "--worktree") return "/worktree";
-  if (args[0]) return browserPath(`/${args[0].includes("...") ? "compare" : "commit"}/${args[0]}`);
+  if (args[0]) return argPage(args);
   const [head, base] = await Promise.all([git(root, ["symbolic-ref", "--short", "-q", "HEAD"]),
     git(root, ["symbolic-ref", "--short", "-q", "refs/remotes/origin/HEAD"])]);
   const branch = head.stdout.trim(), main = base.stdout.trim().replace(/^origin\//, "");
   // shortcut: without origin/HEAD, main and master count as the default branch even if absent; read the CLI's resolveDefaultBranch if that matters.
-  return branch && branch !== main && (main || !["main", "master"].includes(branch)) ? browserPath(`/branch/${branch}`) : "/";
+  return branch && branch !== main && (main || !["main", "master"].includes(branch)) ? argPage([], branch) : "/";
 }
 
 async function openUrl(url) {
@@ -52,7 +51,7 @@ async function openUrl(url) {
 }
 
 // The official CLI is a foreground server: herdr-core keeps one per worktree, found again by its label.
-async function official(root, args) {
+async function official(root, args, page) {
   const label = `${LABEL}=${root}`;
   const [live] = (await core(["ls", "--label", label])).terminals;
   if (!live) {
@@ -63,7 +62,7 @@ async function official(root, args) {
   const { text } = await core(["read", live.address, "--lines", "5000"]);
   const origin = /pulls\.review is serving (http:\/\/[^/\s]+)/.exec(text)?.[1];
   if (!origin) throw new Error(`pulls.review is still starting. Its output: hc read ${live.address}`);
-  await openUrl(origin + await pageFor(root, args));
+  await openUrl(origin + (page ?? await pageFor(root, args)));
 }
 
 // Per the pane's "Open in" setting, one review pane per tab, split off the focused pane, or one review tab per space.
@@ -85,26 +84,30 @@ function herdr(root, page) {
   run("pane.split", { direction: "right", ...(from ? { pane: from } : {}), mod: PANE, props: { root, page, n } });
 }
 
-// Opens a review: `{ cwd, args, analyze }` from the Review bar for one diff (analyzed by AI in the fork), else the focused
-// pane's worktree: its uncommitted changes when there are any, else what pulls.review opens by default.
+// Opens a review: `{ root, args, page, analyze }` from the Review bar for one diff (analyzed by AI in the fork), its menu's
+// `overlay` closed when done; else the focused pane's worktree: its uncommitted changes when there are any, else what
+// pulls.review opens by default.
 export async function launch(input) {
-  const { cwd, on } = input.cwd ? input : reviewLocation();
   const fail = (body) => notify({ title: "pulls.review", body, level: "error" });
   try {
-    // The servers listen on this machine's loopback only.
-    if (on) return fail(`Only local folders, not ${on}.`);
-    if (!cwd) return fail("No folder for the focused pane.");
-    const top = await git(cwd, ["rev-parse", "--show-toplevel"]);
-    if (top.code !== 0) return fail("Not a git repository.");
-    const root = top.stdout.trim();
+    let { root } = input;
+    if (!root) {
+      const { cwd, on } = reviewLocation();
+      // The servers listen on this machine's loopback only.
+      if (on) return fail(`Only local folders, not ${on}.`);
+      if (!cwd) return fail("No folder for the focused pane.");
+      const top = await git(cwd, ["rev-parse", "--show-toplevel"]);
+      if (top.code !== 0) return fail("Not a git repository.");
+      root = top.stdout.trim();
+    }
     const args = input.args ?? ((await git(root, ["status", "--porcelain"])).stdout.trim() ? ["--worktree"] : []);
     const mode = await readMode();
-    if (mode === "official") return await official(root, args);
+    if (mode === "official") return await official(root, args, input.page);
     // The pane starts an analysis itself only with its Analyze automatically setting on, as the app never does unasked.
-    if (mode === "herdr") return herdr(root, await pageFor(root, args));
+    if (mode === "herdr") return herdr(root, input.page ?? await pageFor(root, args));
     // `--analyze` starts the AI analysis, or follows the one running; the official CLI has no such flag.
     const r = await cli("jin.review", ["-d", ...(mode === "pwa" ? ["--pwa"] : []), ...(input.analyze ? ["--analyze"] : []), ...args], { cwd: root });
     if (r.code !== 0) fail((r.stderr || r.stdout).trim() || `exit ${r.code}`);
   } catch (error) { fail(error?.message ?? String(error)); }
-  finally { closeOverlay(input.overlay); }
+  finally { if (input.overlay) closeOverlay(input.overlay); }
 }

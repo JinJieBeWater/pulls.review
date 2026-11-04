@@ -33,7 +33,7 @@ function fire(node, event, ...args) {
 }
 const plain = (value) => JSON.parse(JSON.stringify(value));
 
-const zoom = 1.1, calls = [], overlays = [], closed = [], notes = [], state = {}, shown = { pane: "p1", tab: "b" };
+const zoom = 1.1, calls = [], overlays = [], closed = [], notes = [], launched = [], state = {}, shown = { pane: "p1", tab: "b" };
 const theme = new Proxy({ foreground: "#f4f4f6", dim: "#77777f", border: "#2a2a30", hover: "#202024", ansi1: "#e06c75", ansi2: "#98c379", ansi3: "#c8a84b", ansi4: "#5f8fe0", ansi9: "#f08c95", ansi10: "#b5e09a", ansi11: "#e8cf7a", ansi12: "#8fb4f2" }, { get: (t, k) => t[k] ?? "#a9a9b4" });
 const env = {
   View: class {}, div: () => element(), h_flex: () => element("h"), v_flex: () => element("v"),
@@ -50,8 +50,9 @@ const env = {
 const source = ["bar.js", "open.js", "main.js"].map(file => fs.readFileSync(path.join(__dirname, file), "utf8")).join("\n")
   .replace(/^import [^;]*;\r?\n/gm, "").replace("export default class", "globalThis.Mod = class").replace(/^export /gm, "");
 const cx = { notify() {}, stop_propagation() {}, spawn: (f) => f(cx), timer: { every() {} } };
-// `setup` gets the module's scope before init, to stand in for git.
-const load = (props = {}, setup) => {
+// `setup` gets the module's scope before init, to stand in for git; by default it records what open.js's launch gets.
+const record = (scope) => { scope.launch = (input) => { launched.push(plain(input)); }; };
+const load = (props = {}, setup = record) => {
   const scope = vm.createContext({ ...env, props: () => props });
   vm.runInContext(source, scope, { filename: "pulls-review" });
   setup?.(scope);
@@ -199,13 +200,14 @@ const load = (props = {}, setup) => {
   assert.deepEqual([spec.mod, spec.props.menu], ["pulls-review", "review"]);
   assert.deepEqual(plain(spec.at), { x: 892, y: 40 * zoom }, "it hangs from the bar under the press, not over the bar");
   fire(find(bar.render(), "review-open"), "on_click", {}, cx);
-  assert.deepEqual([overlays.at(-1).mod, overlays.at(-1).props.analyze], ["pulls-review", true], "a count's click starts the analysis");
-  const { mod: menu } = load(spec.props);
+  assert.deepEqual(launched.at(-1), { root: "/repo", args: [], page: "/branch/feat", analyze: true }, "a count's click opens its page, known without git, and starts the analysis");
+  const { mod: menu } = load({ ...spec.props, overlay: "m1" });
+  const shut = closed.length;
   fire(find(menu.render(), "review-commit-abcdef123456"), "on_click", {}, cx);
-  assert.deepEqual(plain(overlays.at(-1).props.args), ["abcdef123456"]);
-  assert.ok(!overlays.at(-1).props.analyze, "a menu pick doesn't");
+  assert.deepEqual(launched.at(-1), { root: "/repo", args: ["abcdef123456"], page: "/commit/abcdef123456", overlay: "m1" }, "a menu pick doesn't analyze");
+  assert.equal(closed.length, shut, "launch closes the menu when done: closing first would stop its task");
   fire(find(menu.render(), "review-branch-Other"), "on_click", {}, cx);
-  assert.deepEqual(plain(overlays.at(-1).props.args), ["origin/main...Other"]);
+  assert.deepEqual([launched.at(-1).args, launched.at(-1).page], [["origin/main...Other"], "/compare/origin/main...Other"]);
   // With the review pane showing this repository's diff: its count lit, one commit's place and steps, the menu on its commits.
   const list = ["c1", "c2", "c3"].map(sha => ({ sha, subject: sha, when: "1 hour ago" }));
   const pane = (page, base = "/branch/feat", commits = list) => { state["review.shown"] = { b: { root: "/repo", page, base, commits } }; };
@@ -235,7 +237,7 @@ const load = (props = {}, setup) => {
   fire(find(inMenu.render(), "review-all"), "on_click", {}, cx);
   assert.equal(state.review.page, "/branch/feat");
   fire(find(inMenu.render(), "review-branch-Other"), "on_click", {}, cx);
-  assert.deepEqual(plain(overlays.at(-1).props.args), ["origin/main...Other"], "a branch is a new diff");
+  assert.deepEqual(launched.at(-1).args, ["origin/main...Other"], "a branch is a new diff");
   // Titled for what it lists: this review's commits, else the branch's. Branches above them, the titles outside the scrolling lists.
   const titles = (node) => strings(node).filter(text => /^(Branches vs|Commits)/.test(text));
   assert.deepEqual(plain(titles(inMenu.render())), ["Branches vs main", "Commits in this review"]);
@@ -264,11 +266,11 @@ const load = (props = {}, setup) => {
   const scoped = load(within.props);
   scoped.scope.InputState = { new: (options) => { placeholders.push(options.placeholder); return { on: (event, fn) => { if (event === "submit") enter = fn; }, value: () => query, focus() {} }; } };
   scoped.scope.initReviewMenu(scoped.mod);
-  state.review = null; enter();
+  state.review = null; enter({}, cx);
   assert.equal(state.review.page, "/branch/feat");
   query = "c1";
   assert.equal(find(scoped.mod.render(), "review-all"), null);
-  enter();
+  enter({}, cx);
   assert.equal(state.review.page, "/commit/c1");
   // The search says what there is to search.
   const alone = load({ ...within.props, branches: [] });
@@ -290,16 +292,16 @@ const load = (props = {}, setup) => {
   typed = "oTHER";
   assert.equal(find(searching.mod.render(), "review-commit-abcdef123456"), null, "a commit that doesn't match goes");
   assert.ok(find(searching.mod.render(), "review-branch-Other"), "matching ignores case");
-  submit();
-  assert.deepEqual(plain(overlays.at(-1).props.args), ["origin/main...Other"], "Enter opens the only match left");
+  submit({}, cx);
+  assert.deepEqual(launched.at(-1).args, ["origin/main...Other"], "Enter opens the only match left");
   typed = "abcdef";
   assert.ok(find(searching.mod.render(), "review-commit-abcdef123456"), "a sha's start matches");
-  submit();
-  assert.deepEqual(plain(overlays.at(-1).props.args), ["abcdef123456"]);
+  submit({}, cx);
+  assert.deepEqual(launched.at(-1).args, ["abcdef123456"]);
   typed = "nope";
-  const opened = overlays.length;
-  submit();
-  assert.equal(overlays.length, opened, "no match: Enter opens nothing");
+  const opened = launched.length;
+  submit({}, cx);
+  assert.equal(launched.length, opened, "no match: Enter opens nothing");
   await click({ ...r, branch: "main", unmerged: 0 });
   assert.equal(ranges.at(-1), "HEAD", "on the default branch: its recent commits");
   delete bar.reviewPress;
@@ -311,15 +313,23 @@ const load = (props = {}, setup) => {
   await click(r);
   assert.equal(overlays.length, before, "nothing to pick, no menu");
 
-  // Opened as an overlay it opens the review and closes itself: in "herdr" mode, a review pane split off the focused one.
+  // Opened as an overlay (`mod.open:pulls-review`) it reviews the focused pane's worktree and closes itself: in "herdr"
+  // mode, a review pane split off the focused one.
   calls.length = 0;
-  const { mod: launcher } = load({ overlay: "o1", cwd: "/repo/src", args: ["--worktree"] }, (scope) => {
-    scope.exec = async (_command, args) => args.includes("--show-toplevel") ? { code: 0, stdout: "/repo\n" } : { code: 0, stdout: "" };
+  const { mod: launcher, scope: opener } = load({ overlay: "o1" }, (scope) => {
+    scope.exec = async (_command, args) => args.includes("--show-toplevel") ? { code: 0, stdout: "/repo\n" } : { code: 0, stdout: args.includes("status") ? " M a.js\n" : "" };
   });
   await new Promise(setImmediate);
-  assert.deepEqual(calls.map(([name, args]) => [name, args.mod, args.pane, args.props?.page]), [["pane.split", "review", "p1", "/worktree"]]);
+  assert.deepEqual(calls.map(([name, args]) => [name, args.mod, args.pane, args.props?.root, args.props?.page]), [["pane.split", "review", "p1", "/repo", "/worktree"]]);
   assert.deepEqual(closed.at(-1), "o1");
   assert.equal(find(launcher.render(), "review-fit"), null, "nothing to see while it works");
+  // From the bar, what it already knows: no git, no overlay to close.
+  calls.length = 0;
+  const shutBefore = closed.length;
+  opener.exec = async (_command, args) => assert.fail(`git ${args.join(" ")}`);
+  await opener.launch({ root: "/repo", args: ["origin/feat...feat"], page: "/compare/origin/feat...feat", analyze: true });
+  assert.deepEqual(calls.map(([name, args]) => [name, args.props?.page]), [["pane.split", "/compare/origin/feat...feat"]]);
+  assert.equal(closed.length, shutBefore);
   assert.deepEqual(plain(notes), []);
 
   console.log("ok: the Review bar's counts outlined and ruled, its block sized to fit, the branch menu and its search, opening a review");
