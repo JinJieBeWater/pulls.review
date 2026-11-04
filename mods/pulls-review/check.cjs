@@ -91,7 +91,7 @@ const load = (props = {}, setup) => {
   assert.equal(logo.source, "mods/pulls-review/logo.svg");
   assert.ok(fs.existsSync(path.join(__dirname, "logo.svg")));
   fire(find(drawn, "review-pick"), "on_hover", true, cx);
-  assert.deepEqual(strings(find(bar.render(), "tip-review-pick").style.content), ["Pick a commit or branch to review"], "its card shows on hover");
+  assert.deepEqual(strings(find(bar.render(), "tip-review-pick").style.content), ["Change what to review"], "its card shows on hover");
   fire(find(drawn, "review-pick"), "on_hover", false, cx);
   // Each count in its own color, so what there is to review reads at a glance; hovered, its bright twin.
   const countColor = id => find(bar.render(), id).items[0].style.text_color;
@@ -236,6 +236,30 @@ const load = (props = {}, setup) => {
   assert.equal(state.review.page, "/branch/feat");
   fire(find(inMenu.render(), "review-branch-Other"), "on_click", {}, cx);
   assert.deepEqual(plain(overlays.at(-1).props.args), ["origin/main...Other"], "a branch is a new diff");
+  // Titled for what it lists: this review's commits, else the branch's. Branches above them, the titles outside the scrolling lists.
+  const titles = (node) => strings(node).filter(text => /^(Branches vs|Commits)/.test(text));
+  assert.deepEqual(plain(titles(inMenu.render())), ["Branches vs main", "Commits in this review"]);
+  const top = find(inMenu.render(), "review-menu").items.map(n => n.key);
+  assert.ok(top.includes("review-all") && top.includes("review-branches") && top.includes("review-commit-list"));
+  const many = load({ ...within.props, branches: Array.from({ length: 9 }, (_, i) => ({ name: `b${i}`, count: 1 })) }).mod;
+  assert.equal(find(many.render(), "review-branches").style.max_h, 4 * 32, "a long branch list can't push the commits away");
+  // Enter takes the top row: All changes, until a search hides it.
+  let enter, query = "";
+  const placeholders = [];
+  const scoped = load(within.props);
+  scoped.scope.InputState = { new: (options) => { placeholders.push(options.placeholder); return { on: (event, fn) => { if (event === "submit") enter = fn; }, value: () => query, focus() {} }; } };
+  scoped.scope.initReviewMenu(scoped.mod);
+  state.review = null; enter();
+  assert.equal(state.review.page, "/branch/feat");
+  query = "c1";
+  assert.equal(find(scoped.mod.render(), "review-all"), null);
+  enter();
+  assert.equal(state.review.page, "/commit/c1");
+  // The search says what there is to search.
+  const alone = load({ ...within.props, branches: [] });
+  alone.scope.InputState = scoped.scope.InputState;
+  alone.scope.initReviewMenu(alone.mod);
+  assert.deepEqual(placeholders, ["Search commits and branches", "Search commits"]);
   // A single commit opened from the log has no commits of its own to step through: the menu stays on the log.
   pane("/commit/abc", "/commit/abc", [list[0]]);
   assert.equal((await click(r)).props.within, null);

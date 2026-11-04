@@ -8,6 +8,8 @@ import { h_flex, v_flex, InputState, Input, HoverCard } from "gpui-base";
 import { spaces, panes, focused, exec, watchFolder, window, openOverlay, closeOverlay, props, setShared, shared, theme, settings } from "herdr";
 
 const MOD = "pulls-review";
+// The menu's branches show this many rows above the commits, and scroll for the rest.
+const BRANCH_ROWS = 4;
 
 // The hovered button, as state: its hover label reads it.
 const glow = (view, id) => (on, cx) => {
@@ -142,19 +144,21 @@ function reviewMatches(view) {
 }
 
 export function initReviewMenu(view) {
-  view.search = InputState.new({ placeholder: "Search commits and branches" });
+  view.search = InputState.new({ placeholder: props().branches.length ? "Search commits and branches" : "Search commits" });
   view.search.on("change", (_e, cx) => cx.notify());
   view.search.on("submit", () => {
-    const { commits, branches } = reviewMatches(view);
-    if (commits[0]) pickCommit(commits[0]);
+    const { commits, branches } = reviewMatches(view), { within } = props();
+    // The top row: All changes until a search hides it.
+    if (within && !view.search.value().trim()) showWithin(within.base);
     else if (branches[0]) openPick(branchArgs(branches[0]));
+    else if (commits[0]) pickCommit(commits[0]);
   });
   view.search.focus();
 }
 
 // The logo's menu, this mod opened as an overlay with props.menu (main.js).
 export function reviewMenu(view) {
-  const t = theme(), { base, height, within } = props(), { commits, branches } = reviewMatches(view);
+  const t = theme(), { base, branch, height, within } = props(), { commits, branches } = reviewMatches(view), searching = Boolean(view.search.value().trim());
   const title = (text) => div().h(24).px(8).flex_none().flex().items_center().text_size(11).text_color(t.dim).child(text);
   const row = (id, name, action, ...cells) => h_flex().id(id).h(32).px(8).gap(8).flex_none().items_center().rounded(6).text_color(t.foreground)
     .hover(s => s.bg(t.hover)).role("button").accessibility_label(name).on_click(action).children(cells);
@@ -163,16 +167,17 @@ export function reviewMenu(view) {
     .child(h_flex().h(32).mb(4).px(8).gap(8).flex_none().items_center()
       .child(svg("mods/workspace-chrome/search.svg").size(13).flex_none().text_color(t.dim))
       .child(Input.new(view.search).flex_1().h_full().text_size(13).text_color(t.foreground)))
-    .child(v_flex().id("review-list").flex_1().min_h(0).overflow_y_scroll()
-      .when(Boolean(within), el => el.child(row("review-all", "Review all changes", () => showWithin(within.base), div().flex_1().child("All changes")).when(!within?.sha, s => s.bg(t.hover))))
-      .when(commits.length > 0, el => el.child(title("Commits")).children(commits.map(c =>
+    // Outside the lists, so All changes and each list's title stay put. Branches first: the few, above up to 200 commits.
+    .when(Boolean(within) && !searching, el => el.child(row("review-all", "Review all changes", () => showWithin(within.base), div().flex_1().child("All changes")).when(!within?.sha, s => s.bg(t.hover))))
+    .when(branches.length > 0, el => el.child(title(`Branches vs ${base}`)).child(v_flex().id("review-branches").flex_none().overflow_y_scroll().when(commits.length > 0, list => list.max_h(BRANCH_ROWS * 32))
+      .children(branches.map(b => row(`review-branch-${b.name}`, `Review branch ${b.name}, ${b.count} ahead of ${base}`, () => openPick(branchArgs(b)),
+        div().flex_1().min_w(0).truncate().child(b.name), div().flex_none().text_size(12).text_color(t.dim).child(String(b.count)))))))
+    .when(commits.length > 0 && branches.length > 0, el => el.child(div().h(1).mx(6).my(4).flex_none().bg(t.border)))
+    .when(commits.length > 0, el => el.child(title(within ? "Commits in this review" : branch === "(detached)" ? "Commits" : `Commits on ${branch}`))
+      .child(v_flex().id("review-commit-list").flex_1().min_h(0).overflow_y_scroll().children(commits.map(c =>
         row(`review-commit-${c.sha}`, `Review commit ${c.subject}`, () => pickCommit(c),
-          div().w(58).flex_none().text_color(t.dim).child(c.sha.slice(0, 7)), div().flex_1().min_w(0).truncate().child(c.subject), div().flex_none().text_size(12).text_color(t.dim).child(c.when.replace(/ ago$/, ""))).when(c.sha === within?.sha, s => s.bg(t.hover)))))
-      .when(commits.length > 0 && branches.length > 0, el => el.child(div().h(1).mx(6).my(4).flex_none().bg(t.border)))
-      .when(branches.length > 0, el => el.child(title(`Branches vs ${base}`)).children(branches.map(b =>
-        row(`review-branch-${b.name}`, `Review branch ${b.name}, ${b.count} ahead of ${base}`, () => openPick(branchArgs(b)),
-          div().flex_1().min_w(0).truncate().child(b.name), div().flex_none().text_size(12).text_color(t.dim).child(String(b.count))))))
-      .when(!commits.length && !branches.length, el => el.child(div().p(8).text_color(t.dim).child("No matches"))));
+          div().w(58).flex_none().text_color(t.dim).child(c.sha.slice(0, 7)), div().flex_1().min_w(0).truncate().child(c.subject), div().flex_none().text_size(12).text_color(t.dim).child(c.when.replace(/ ago$/, ""))).when(c.sha === within?.sha, s => s.bg(t.hover))))))
+    .when(!commits.length && !branches.length, el => el.child(div().p(8).text_color(t.dim).child("No matches")));
 }
 
 export function reviewBar(view, t, stop) {
@@ -216,8 +221,8 @@ export function reviewBar(view, t, stop) {
     // Within a review, its own commits, newest first as the log's.
     const commits = within ? [...list].reverse() : picks.commits;
     if (!commits.length && !branches.length) return;
-    const height = Math.min(480, 10 + 36 + (within ? 32 : 0) + (commits.length ? 24 + commits.length * 32 : 0) + (commits.length && branches.length ? 9 : 0) + (branches.length ? 24 + branches.length * 32 : 0));
-    openOverlay({ mod: MOD, kind: "popup", at: underBar(view.reviewPress), width: 480, height, props: { menu: "review", root: r.root, base: r.base, baseRef: r.baseRef, commits, branches, height, within } });
+    const height = Math.min(480, 10 + 36 + (within ? 32 : 0) + (commits.length ? 24 + commits.length * 32 : 0) + (commits.length && branches.length ? 9 : 0) + (branches.length ? 24 + (commits.length ? Math.min(branches.length, BRANCH_ROWS) : branches.length) * 32 : 0));
+    openOverlay({ mod: MOD, kind: "popup", at: underBar(view.reviewPress), width: 480, height, props: { menu: "review", root: r.root, branch: r.branch, base: r.base, baseRef: r.baseRef, commits, branches, height, within } });
   }); };
   // One commit shown: its place, opening the menu, between steps to the older and newer ones.
   const step = (id, glyph, label, commit, last) => h_flex().id(id).h(24).px(6).flex_none().items_center().text_size(12).text_color(commit ? t.dim : t.border).role("button").accessibility_label(label)
@@ -232,8 +237,8 @@ export function reviewBar(view, t, stop) {
   // Outlined, not filled: a fill would read as an active tab. Each part's fill runs to the outline and the rules.
   return h_flex().id("pulls-review").h(26).flex_none().items_center().rounded(6).border(1).border_color(t.border).on_mouse_down("left", stop)
     // Stays with no counts: on a clean default branch it's the only way in.
-    .child(tip(view.hot, t, "review-pick", "Pick a commit or branch to review", h_flex().id("review-pick").h(24).px(5).flex_none().items_center().rounded_l(6).when(!segments.length && !sha, el => el.rounded_r(6))
-      .hover(s => s.bg(t.hover)).on_hover(glow(view, "review-pick")).role("button").accessibility_label("Pick a commit or branch to review")
+    .child(tip(view.hot, t, "review-pick", "Change what to review", h_flex().id("review-pick").h(24).px(5).flex_none().items_center().rounded_l(6).when(!segments.length && !sha, el => el.rounded_r(6))
+      .hover(s => s.bg(t.hover)).on_hover(glow(view, "review-pick")).role("button").accessibility_label("Change what to review")
       .on_mouse_down("left", pressed).on_click(openMenu)
       // image, not svg: svg would draw the logo in one tint.
       .child(image(`mods/${MOD}/logo.svg`).w(14).h(14).flex_none())))
