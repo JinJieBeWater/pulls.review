@@ -649,6 +649,26 @@ const timers = [], tick = () => timers.splice(0).forEach(f => f(cx));
   pane.open(there, cx); await wait(); await drawAll();
   const inGroup = groupFiles(pane.group()).map(path => pane.review.files.find(f => f.path === path)).filter(Boolean);
   assert.ok(inGroup.length > 0 && inGroup.every(f => f.hunks), "rows on coming back");
+  // A read that never answers doesn't freeze the pane: a read of the same page waits for it, and after a while the pane
+  // says it didn't answer, with Retry. Its late answer still counts.
+  let answer; const asked = [];
+  mainScope.review = (root, route, body) => route === "/api/review" ? (asked.push(body.page), new Promise(r => { answer = r; })) : daemon(root, route, body);
+  timers.length = 0;
+  pane.load(cx); pane.load(cx);
+  assert.equal(asked.length, 1);
+  tick(); drawn.clear(); pane.render(cx);
+  assert.ok(pane.error && drawn.has("retry") && !pane.loading);
+  const late = await daemon("/repo", "/api/review", { page: there, rows: [] });
+  answer({ ...late, title: "late" }); await wait();
+  assert.ok(pane.review.title === "late" && !pane.error);
+  // A read of another page starts at once, and the old page's answer, coming after its own, is dropped.
+  const answers = new Map();
+  mainScope.review = (root, route, body) => route === "/api/review" ? new Promise(r => answers.set(body.page, r)) : daemon(root, route, body);
+  pane.open("/commit/c1", cx);
+  answers.get("/commit/c1")({ ...late, title: "new" }); await wait();
+  answer({ ...late, title: "old" }); await wait();
+  assert.equal(pane.review.title, "new");
+  mainScope.review = daemon;
   // Reopened on one commit's page, which lists only itself: the bar's list is read from its base, once.
   const reopened = new Map([["tab", "b"], ["root", "/repo"], ["page", "/commit/c2"], ["base", "/branch/fix"], ["handled", "99"]]);
   const baseReads = [];

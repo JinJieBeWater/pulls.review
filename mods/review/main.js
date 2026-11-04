@@ -10,6 +10,8 @@ import { request, review } from "./daemon.js";
 import { buildItems, codeInset, contentWidth, FILE, fileRows, groupFiles, noteWidth, pageLabel } from "./rows.js";
 
 const PANE = "review";
+// How long a read may take before the pane says it didn't answer and offers Retry; its answer still counts if it comes.
+const LOAD_TIMEOUT = 30000;
 // Preferences every review pane shares: a pane's localStorage is its own, so a new pane would start from the defaults.
 const PREFS = `${PANE}.prefs`;
 const pref = (key) => shared(PREFS)?.[key];
@@ -147,7 +149,7 @@ export default class ReviewPane extends View {
       this.saveLlm({ agentModel: hit?.id ?? typed }, cx);
     });
     this.review = null; this.error = null; this.version = 0; this.width = 900; this.view = 600; this.listHeight = 600; this.frames = 0; this.sideWidth = [0, 0, 0]; this.shift = [0, 0, 0];
-    this.startingUntil = 0;
+    this.startingUntil = 0; this.loading = null; this.loadId = 0;
     this.marks = 0; this.marking = 0;
     this.collapsed = new Set(); this.full = new Map(); this.seen = new Set(); this.auto = new Set(); this.asked = new Set(); this.folded = new Set();
     this.handle = cx.focus_handle();
@@ -189,19 +191,26 @@ export default class ReviewPane extends View {
 
   // Rows come only for the group shown (a large diff's run to megabytes), and none while polling a run:
   // apply() keeps the rows of files whose sha didn't change.
+  // Only the latest read counts: a read of the page being read waits for it (a burst of changes can't restart it forever),
+  // a read of another starts at once and the old one's answer is dropped.
   load(cx, poll = false) {
     if (!this.root || !this.page) return;
-    if (this.loading) { this.again = true; return; }
-    this.loading = true;
-    const { root, page } = this, t = theme(), group = this.group(), marks = this.marks;
+    if (this.loading?.root === this.root && this.loading.page === this.page) { this.again = true; return; }
+    const { root, page } = this, t = theme(), group = this.group(), marks = this.marks, id = ++this.loadId;
+    this.loading = { root, page }; this.again = false;
     // Rows only for the group's files that have none: apply() keeps the rest, and each asked-for file is highlighted anew.
     const rows = poll || !group ? [] : groupFiles(group).filter(path => this.review.files.some(f => f.path === path && !f.hunks));
     for (const file of this.review?.files ?? []) if (rows.includes(file.path)) this.asked.add(file.sha);
     this.colorsKey = JSON.stringify(colors(t));
+    cx.timer.after(LOAD_TIMEOUT, (cx) => {
+      if (id !== this.loadId || !this.loading) return;
+      this.loading = null; this.error = `jin.review didn't answer in ${LOAD_TIMEOUT / 1000} s`;
+      cx.notify();
+    });
     cx.spawn(async (cx) => {
       try {
         const r = await review(root, "/api/review", { page, colors: colors(t), rows });
-        if (root !== this.root || page !== this.page) return;
+        if (id !== this.loadId) return;
         // Read before a reviewed mark landed, it would undo the mark on screen: the mark's own read follows.
         if (this.marking || marks !== this.marks) return;
         this.apply(r);
@@ -215,12 +224,14 @@ export default class ReviewPane extends View {
           this.auto.add(once);
           this.analyze(cx, false);
         }
-      } catch (e) { if (root === this.root && page === this.page) this.error = e?.message ?? String(e); }
+      } catch (e) { if (id === this.loadId) this.error = e?.message ?? String(e); }
       finally {
-        this.loading = false;
-        this.report();
-        cx.notify();
-        if (this.again) { this.again = false; this.load(cx); }
+        if (id === this.loadId) {
+          this.loading = null;
+          this.report();
+          cx.notify();
+          if (this.again) this.load(cx);
+        }
       }
     });
   }
