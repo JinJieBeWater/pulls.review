@@ -29,7 +29,10 @@ has to be drawn natively, from data the daemon already owns.
 
 The upstream review features the pane draws: group navigation, file diffs (unified or
 split, collapse, the full file), the AI analysis (start, progress, notes, outdated),
-one commit at a time, and reviewed marks.
+one commit at a time, and reviewed marks. The pane and the Review bar are a pair: the bar picks the
+diff and the commit, the pane does what's done to the diff shown. The pane publishes what it shows
+in `shared("review.shown")`, by tab (`root`, `page`, `base`, `commits`); the bar's picks arrive through
+`shared("review")`, a `base` keeping that diff's commits.
 
 ### Not in scope
 
