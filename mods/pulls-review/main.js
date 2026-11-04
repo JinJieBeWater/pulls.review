@@ -5,7 +5,7 @@
 import { View, div } from "gpui-kit";
 import { h_flex } from "gpui-base";
 import { props, run, settings, theme } from "herdr";
-import { watchReview, reviewBar, reviewMenu, initReviewMenu } from "./bar.js";
+import { watchReview, reviewBar, reviewMenu, initReviewMenu, menuClosed } from "./bar.js";
 import { launch } from "./open.js";
 
 export default class PullsReview extends View {
@@ -15,6 +15,8 @@ export default class PullsReview extends View {
     else if (p.overlay) cx.spawn(() => launch(p));
     else watchReview(this, cx);
   }
+
+  close() { if (this.search) menuClosed(); }
 
   render() {
     const p = props() ?? {};

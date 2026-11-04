@@ -243,6 +243,21 @@ const load = (props = {}, setup) => {
   assert.ok(top.includes("review-all") && top.includes("review-branches") && top.includes("review-commit-list"));
   const many = load({ ...within.props, branches: Array.from({ length: 9 }, (_, i) => ({ name: `b${i}`, count: 1 })) }).mod;
   assert.equal(find(many.render(), "review-branches").style.max_h, 4 * 32, "a long branch list can't push the commits away");
+  // The logo toggles: a press outside the popup closes it, before or just after the press reaches the bar; its click leaves it closed.
+  const menus = () => overlays.length, logoButton = () => find(bar.render(), "review-pick");
+  const pressLogo = () => fire(logoButton(), "on_mouse_down:left", { position: { x: 900, y: 20 } }, cx);
+  const menusBefore = menus();
+  inMenu.close(); pressLogo(); fire(logoButton(), "on_click", {}, run); await reading;
+  assert.equal(menus(), menusBefore, "closed just before the press");
+  pressLogo(); inMenu.close(); fire(logoButton(), "on_click", {}, run); await reading;
+  assert.equal(menus(), menusBefore, "closed just after it");
+  state["pulls-review.menuClosed"] = Date.now() - 1000;
+  pressLogo(); fire(logoButton(), "on_click", {}, run); await reading;
+  assert.equal(menus(), menusBefore + 1, "closed long ago, by Esc or a pick: the click opens it");
+  // Clicks while it's still reading open it once.
+  pressLogo(); fire(logoButton(), "on_click", {}, run); fire(logoButton(), "on_click", {}, run); await reading;
+  assert.equal(menus(), menusBefore + 2);
+  delete state["pulls-review.menuClosed"];
   // Enter takes the top row: All changes, until a search hides it.
   let enter, query = "";
   const placeholders = [];

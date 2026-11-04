@@ -10,6 +10,9 @@ import { spaces, panes, focused, exec, watchFolder, window, openOverlay, closeOv
 const MOD = "pulls-review";
 // The menu's branches show this many rows above the commits, and scroll for the rest.
 const BRANCH_ROWS = 4;
+// When the logo's menu last closed: a press outside a popup closes it before the press's own click lands.
+const MENU_CLOSED = `${MOD}.menuClosed`;
+export const menuClosed = () => setShared(MENU_CLOSED, Date.now());
 
 // The hovered button, as state: its hover label reads it.
 const glow = (view, id) => (on, cx) => {
@@ -215,15 +218,24 @@ export function reviewBar(view, t, stop) {
     r.ahead > 0 && ["review-ahead", `↑${r.ahead}`, null, 2, `Review ${n(r.ahead, "commit")} to push: on ${r.branch}, not on ${r.upstream}`, [`${r.upstream}...${r.branch}`]],
     r.behind > 0 && ["review-behind", `↓${r.behind}`, null, 1, `Review ${n(r.behind, "commit")} to pull: on ${r.upstream} as of your last fetch, not on ${r.branch}`, [`${r.branch}...${r.upstream}`]],
   ].filter(Boolean);
-  const pressed = (e, cx) => { view.reviewPress = e.position; stop(e, cx); };
-  const openMenu = (_e, cx) => { view.hot = null; cx.notify(); cx.spawn(async () => {
-    const picks = await readPicks(r), { branches } = picks;
-    // Within a review, its own commits, newest first as the log's.
-    const commits = within ? [...list].reverse() : picks.commits;
-    if (!commits.length && !branches.length) return;
-    const height = Math.min(480, 10 + 36 + (within ? 32 : 0) + (commits.length ? 24 + commits.length * 32 : 0) + (commits.length && branches.length ? 9 : 0) + (branches.length ? 24 + (commits.length ? Math.min(branches.length, BRANCH_ROWS) : branches.length) * 32 : 0));
-    openOverlay({ mod: MOD, kind: "popup", at: underBar(view.reviewPress), width: 480, height, props: { menu: "review", root: r.root, branch: r.branch, base: r.base, baseRef: r.baseRef, commits, branches, height, within } });
-  }); };
+  const pressed = (e, cx) => { view.reviewPress = e.position; view.pressAt = Date.now(); stop(e, cx); };
+  const openMenu = (_e, cx) => {
+    view.hot = null; cx.notify();
+    // The button toggles: the press that brought this click closed the menu, so the click leaves it closed. 50 ms, for
+    // a close reported just before the press. No press (assistive tech clicks without one), nothing to tell.
+    const closing = view.pressAt != null && (shared(MENU_CLOSED) ?? 0) >= view.pressAt - 50;
+    view.pressAt = null;
+    if (closing || view.readingPicks) return;
+    view.readingPicks = true;
+    cx.spawn(async () => { try {
+      const picks = await readPicks(r), { branches } = picks;
+      // Within a review, its own commits, newest first as the log's.
+      const commits = within ? [...list].reverse() : picks.commits;
+      if (!commits.length && !branches.length) return;
+      const height = Math.min(480, 10 + 36 + (within ? 32 : 0) + (commits.length ? 24 + commits.length * 32 : 0) + (commits.length && branches.length ? 9 : 0) + (branches.length ? 24 + (commits.length ? Math.min(branches.length, BRANCH_ROWS) : branches.length) * 32 : 0));
+      openOverlay({ mod: MOD, kind: "popup", at: underBar(view.reviewPress), width: 480, height, props: { menu: "review", root: r.root, branch: r.branch, base: r.base, baseRef: r.baseRef, commits, branches, height, within } });
+    } finally { view.readingPicks = false; } });
+  };
   // One commit shown: its place, opening the menu, between steps to the older and newer ones.
   const step = (id, glyph, label, commit, last) => h_flex().id(id).h(24).px(6).flex_none().items_center().text_size(12).text_color(commit ? t.dim : t.border).role("button").accessibility_label(label)
     .when(Boolean(commit), el => el.hover(s => s.bg(t.hover).text_color(t.foreground)).on_click(() => showPage(within, `/commit/${commit.sha}`)))
