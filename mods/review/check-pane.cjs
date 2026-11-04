@@ -79,7 +79,7 @@ const element = (named = null) => {
 };
 const press = (id) => { handlers.get(`${id}.on_click`)({}, cx); drawn.clear(); pane.render(cx); };
 const store = new Map(), sharedStore = new Map();
-let shownTab = "b";
+let shownTab = "b", windowActive = true;
 const calls = [], bodies = [], routes = [], puts = [], browsed = [];
 // A text field's state: its value, and its submit and blur handlers.
 const field = { text: "", events: {}, value() { return this.text; }, set_value(v) { this.text = v; }, on(event, h) { this.events[event] = h; return true; } };
@@ -88,7 +88,7 @@ const env = {
   Switch: { new: element }, settings: () => ({ zoom: 1 }),
   // Paths build into nothing here; painting one is an element like any other.
   PathBuilder: (() => { const chain = new Proxy({}, { get: () => () => chain }); return { stroke: () => chain, fill: () => chain }; })(),
-  window: { paint_path: () => element() }, appWindow: () => ({ platform: "macos" }), exec: (...args) => { browsed.push(args); return Promise.resolve({ code: 0 }); }, Input: { new: () => element() }, InputState: { new: () => field },
+  window: { paint_path: () => element() }, appWindow: () => ({ platform: "macos", active: windowActive }), exec: (...args) => { browsed.push(args); return Promise.resolve({ code: 0 }); }, Input: { new: () => element() }, InputState: { new: () => field },
   v_virtual_list: (_id, count, sizes, key, render) => { assert.equal(sizes.length, count); render({ start: 0, end: count }).forEach(Boolean); return element(); },
   VirtualListScrollHandle: { new: () => ({ scroll_to_item: (i) => calls.push(["scroll", i]) }) },
   TextView: { markdown: element },
@@ -136,9 +136,9 @@ assert.equal(vm.runInContext('grey("#ff0000")', mainScope), "#363636");
 // A run's progress names the files it reads, not their paths.
 assert.equal(vm.runInContext('progressText({ kind: "reading", paths: [".git/x/agent/1/a.ts", "b.ts", "c"] })', mainScope), "Reading 3 files: a.ts, …");
 assert.equal(vm.runInContext('progressText({ kind: "thinking", step: 2 })', mainScope), "Thinking… (step 2)");
-// The 150ms timer is the scroll spy, the 1.5s ones each pane's poll of a run; a test runs them by hand.
-let spy; const polls = [];
-const cx = { spawn: (f) => f(cx), notify() {}, stop_propagation() {}, focus_handle: () => ({ focus() {} }), timer: { every: (ms, f) => { if (ms === 150) spy = f; if (ms === 1500) polls.push(f); }, after: (_ms, f) => timers.push(f) } };
+// The 150ms timer is the scroll spy; the others, by period, each pane's in the order they started. A test runs them by hand.
+let spy; const every = {};
+const cx = { spawn: (f) => f(cx), notify() {}, stop_propagation() {}, focus_handle: () => ({ focus() {} }), timer: { every: (ms, f) => { if (ms === 150) spy = f; (every[ms] ??= []).push(f); }, after: (_ms, f) => timers.push(f) } };
 // Timers wait until a test runs them.
 const timers = [], tick = () => timers.splice(0).forEach(f => f(cx));
 (async () => {
@@ -618,18 +618,28 @@ const timers = [], tick = () => timers.splice(0).forEach(f => f(cx));
   let status = { running: true, progress: { kind: "thinking", step: 3 } };
   mainScope.review = (root, route, body) => route === "/api/review/status" ? (routes.push(route), Promise.resolve(status)) : daemon(root, route, body);
   pane.review.analysis = { state: "running", agent: true }; routes.length = 0;
-  polls[0](cx); polls[0](cx); await settle();
+  every[1500][0](cx); every[1500][0](cx); await settle();
   assert.deepEqual(plain(routes), ["/api/review/status"]);
   assert.equal(pane.review.analysis.progress.step, 3);
   status = { running: false }; routes.length = 0;
-  polls[0](cx); await settle();
+  every[1500][0](cx); await settle();
   assert.deepEqual(plain(routes), ["/api/review/status", "/api/review"]);
   // A daemon without the route reads the diff, as before.
   mainScope.review = (root, route, body) => route === "/api/review/status" ? Promise.reject(new Error("Cannot find any route matching")) : daemon(root, route, body);
   pane.review.analysis = { state: "running", agent: true }; routes.length = 0;
-  polls[0](cx); await settle();
+  every[1500][0](cx); await settle();
   assert.deepEqual(plain(routes), ["/api/review"]);
   mainScope.review = daemon;
+  // Unseen - another tab shown, or the window inactive - the slow timer doesn't read; seen again, one read follows.
+  const slow = every[15000][0], wake = every[1000][0];
+  routes.length = 0; shownTab = "other";
+  slow(cx); slow(cx); wake(cx); await settle();
+  shownTab = "b"; windowActive = false; wake(cx); await settle();
+  assert.deepEqual(plain(routes), []);
+  windowActive = true; wake(cx); await settle(); wake(cx); await settle();
+  assert.deepEqual(plain(routes), ["/api/review"]);
+  slow(cx); await settle();
+  assert.equal(routes.length, 2, "seen, the slow timer reads");
   // A read from before a reviewed mark landed doesn't undo it on screen.
   let release;
   mainScope.review = (root, route, body) => route === "/api/review/reviewed" ? new Promise(r => { release = r; }) : daemon(root, route, body);

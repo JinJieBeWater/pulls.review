@@ -157,7 +157,10 @@ export default class ReviewPane extends View {
     this.load(cx);
     // While a run goes the pane follows it; otherwise the folder watch and a slow timer catch new diffs.
     cx.timer.every(1500, (cx) => { if (this.analyzing()) this.poll(cx); });
-    cx.timer.every(15000, (cx) => this.load(cx));
+    // Unseen, the slow timer and the watch only note a read is due; it follows within a second of the pane being seen again.
+    // Hidden panes keep their timers, and a run's poll goes on: tabs show its state.
+    cx.timer.every(15000, (cx) => this.refresh(cx));
+    cx.timer.every(1000, (cx) => { if (this.dirty && this.onScreen()) this.load(cx); });
     // Scrolling redraws only the list. What the rest shows of where it is - the aside's group, the files and groups in view,
     // as the app's scroll spy marks them - is checked here and redrawn when it moved.
     cx.timer.every(150, (cx) => { const spied = this.spied(); if (spied !== this.lastSpied) { this.lastSpied = spied; cx.notify(); } });
@@ -183,11 +186,16 @@ export default class ReviewPane extends View {
       try {
         while (this.watching === root) {
           const paths = await watchFolder(root);
-          if (this.watching === root && paths.some(meaningful)) this.load(cx);
+          if (this.watching === root && paths.some(meaningful)) this.refresh(cx);
         }
       } catch { this.watching = null; }
     });
   }
+
+  // The window active and this pane's tab the one shown.
+  onScreen() { return appWindow()?.active !== false && spaces().some(s => s.active && s.tabs.some(c => c.id === this.tab && c.active)); }
+
+  refresh(cx) { if (this.onScreen()) this.load(cx); else this.dirty = true; }
 
   // Rows come only for the group shown (a large diff's run to megabytes), and none while polling a run:
   // apply() keeps the rows of files whose sha didn't change. With no group yet, the first group's rows come with the read;
@@ -198,7 +206,7 @@ export default class ReviewPane extends View {
     if (!this.root || !this.page) return;
     if (this.loading?.root === this.root && this.loading.page === this.page) { this.again = true; return; }
     const { root, page } = this, t = theme(), group = this.group(), marks = this.marks, id = ++this.loadId;
-    this.loading = { root, page }; this.again = false;
+    this.loading = { root, page }; this.again = false; this.dirty = false;
     // Rows only for the group's files that have none: apply() keeps the rest, and each asked-for file is highlighted anew.
     const rows = poll || !group ? [] : groupFiles(group).filter(path => this.review.files.some(f => f.path === path && !f.hunks));
     for (const file of this.review?.files ?? []) if (rows.includes(file.path)) this.asked.add(file.sha);
