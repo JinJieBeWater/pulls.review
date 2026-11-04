@@ -1,6 +1,8 @@
 // node mods/pulls-review/check.cjs: bar.js, open.js and main.js run on inert elements, as Herdr would load them, without a window.
 const assert = require("node:assert/strict");
+const { spawnSync } = require("node:child_process");
 const fs = require("node:fs");
+const os = require("node:os");
 const path = require("node:path");
 const vm = require("node:vm");
 
@@ -174,6 +176,37 @@ const load = (props = {}, setup = record) => {
   const { mod: loose } = load();
   fire(find(loose.render(), "review-fit"), "on_size_change", { width: 220 });
   assert.equal(calls.length, 0, "without a block it leaves the layout alone");
+
+  // In a real repository: a change worth a read reads a second after the last read at the soonest; one Git ignores
+  // (macOS reports them), or of Git's own files but HEAD and refs, waits for the 10 s.
+  const tmp = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "pulls-review-")));
+  try {
+    spawnSync("git", ["init", "-q"], { cwd: tmp });
+    fs.writeFileSync(path.join(tmp, ".gitignore"), "node_modules/\n");
+    const { scope: watcher } = load();
+    watcher.exec = async (command, args, { cwd }) => { const r = spawnSync(command, args, { cwd, encoding: "utf8" }); return { code: r.status, stdout: r.stdout }; };
+    const under = (...files) => files.map(f => path.join(tmp, f));
+    assert.equal(await watcher.touchesDiff(tmp, under("node_modules/x", "node_modules/y")), false, "only ignored files");
+    assert.equal(await watcher.touchesDiff(tmp, under("node_modules/x", "src/a.js")), true, "one that isn't");
+    assert.equal(await watcher.touchesDiff(tmp, under(".git/index", ".git/objects/ab/cd", ".git")), false, "Git's own files");
+    assert.equal(await watcher.touchesDiff(tmp, under(".git/HEAD")), true);
+    assert.equal(await watcher.touchesDiff(tmp, under(".git/refs/heads/main")), true);
+    assert.equal(await watcher.touchesDiff(tmp, [tmp]), true, "the root, for everything");
+    assert.equal(await watcher.touchesDiff(tmp, ["/elsewhere/x"]), true, "what Git can't judge");
+    let tick, change;
+    const wcx = { notify() {}, spawn: (f) => f(wcx), timer: { every: (_ms, f) => { tick = f; } } };
+    watcher.panes = () => [{ pane: "p1", tab: "b", cwd: tmp }];
+    watcher.watchFolder = () => new Promise(resolve => { change = resolve; });
+    const view = {};
+    watcher.watchReview(view, wcx);
+    tick(wcx); await new Promise(setImmediate);
+    const [key] = view.reviewAt.keys(), readAt = view.reviewAt.get(key);
+    assert.equal(view.reviews.get(key)?.root, tmp);
+    change(under("node_modules/x")); await new Promise(setImmediate);
+    assert.equal(view.reviewAt.get(key), readAt, "an ignored change");
+    change(under("src/a.js")); await new Promise(setImmediate);
+    assert.ok(Date.now() - view.reviewAt.get(key) >= 9000 && view.reviewAt.get(key) <= readAt, "a change: the 10 s rule reads a second after the last read");
+  } finally { fs.rmSync(tmp, { recursive: true, force: true }); }
 
   // The logo reads on click, then its menu's rows open one commit, or one branch against the base.
   const ranges = [];

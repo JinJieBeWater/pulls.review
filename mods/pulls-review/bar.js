@@ -49,8 +49,19 @@ export const browserPath = page => encodeURI(page).replaceAll("#", "%23");
 export const argPage = (args, branch) => browserPath(args[0] === "--worktree" ? "/worktree"
   : args[0] ? `/${args[0].includes("...") ? "compare" : "commit"}/${args[0]}` : `/branch/${branch}`);
 
+// Worth a read? Of Git's own files only HEAD and refs, and nothing Git ignores: macOS reports those too.
+async function touchesDiff(root, paths) {
+  if (paths.some(p => /\/\.git\/(HEAD|refs\/)/.test(p))) return true;
+  const files = paths.filter(p => !/\/\.git(\/|$)/.test(p));
+  if (!files.length) return false;
+  // check-ignore: 0 some ignored and listed, 1 none, 128 can't judge.
+  const r = await git(root, ["check-ignore", "--", ...files]).catch(() => null);
+  return r?.code !== 0 || r.stdout.trim().split("\n").length < files.length;
+}
+
 // Each location keeps its last read, so switching back shows it at once and switching away never shows the old one.
-// Focus is checked every 250 ms (memory reads only); git is read on a new location, a change in the worktree, else every 10 s.
+// Focus is checked every 250 ms (memory reads only); git is read on a new location, a change in the worktree (a second
+// after the last read at the soonest), else every 10 s.
 export function watchReview(view, cx) {
   view.reviews = new Map();
   view.reviewAt = new Map();
@@ -71,7 +82,12 @@ export function watchReview(view, cx) {
         if (root && !view.reviewWatching.has(root)) {
           view.reviewWatching.add(root);
           cx.spawn(async () => {
-            try { while (view.reviews.get(view.reviewKey)?.root === root) { await watchFolder(root); view.reviewAt.clear(); } }
+            try {
+              while (view.reviews.get(view.reviewKey)?.root === root) {
+                const paths = await watchFolder(root);
+                if (await touchesDiff(root, paths)) for (const [k, at] of view.reviewAt) view.reviewAt.set(k, Math.min(at, Date.now() - 9000));
+              }
+            }
             catch {} // The next read watches it again.
             finally { view.reviewWatching.delete(root); }
           });
