@@ -28,9 +28,10 @@ export function reviewLocation() {
   const space = spaces().find((s) => s.active), f = focused();
   const ps = panes(), pane = f?.pane ? ps.find(p => p.pane === f.pane) : null;
   const on = f?.pane === null ? (f.terminal?.includes("/") ? f.terminal.split("/")[0] : null) : space?.machine ?? null;
-  // A mod pane has no folder (the review pane itself): its tab's terminals stand in for it.
+  // A mod pane has no folder. The review pane says which repository it shows; for another, its tab's terminals stand in.
+  const reviewed = pane?.mod === "review" ? shared("review.shown")?.[pane.tab]?.root : null;
   const beside = pane && !pane.cwd ? ps.find(p => p.tab === pane.tab && p.cwd)?.cwd : null;
-  return { cwd: pane?.cwd || beside || f?.cwd || space?.folder, on };
+  return { cwd: reviewed || pane?.cwd || beside || f?.cwd || space?.folder, on };
 }
 
 // Reads write nothing under .git, so the folder watch doesn't wake on them.

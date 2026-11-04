@@ -114,6 +114,14 @@ const load = (props = {}, setup) => {
   assert.equal(find(bar.render(), "pulls-review"), null, "another location never shows this one's counts, even before its own read");
   Object.assign(shown, { pane: "p1", cwd: undefined });
   assert.ok(find(bar.render(), "review-open"), "coming back shows the last read at once");
+  // The review pane focused, in a tab of its own: the repository it shows, not the space's folder.
+  const allPanes = scope.panes;
+  scope.panes = () => [{ pane: "p7", mod: "review", tab: "r", cwd: null }];
+  state["review.shown"] = { r: { root: "/repo" } };
+  Object.assign(shown, { pane: "p7", tab: "r" });
+  assert.deepEqual(plain(scope.reviewLocation()), { cwd: "/repo", on: null });
+  scope.panes = allPanes; delete state["review.shown"];
+  Object.assign(shown, { pane: "p1", tab: "b" });
   show({ ...review, unmerged: 0, changed: 0, ahead: 0, behind: 0 });
   assert.deepEqual(keys(find(bar.render(), "pulls-review")), ["tip-review-pick"], "no counts: the icon stays, the way in on a clean default branch");
   assert.ok("rounded_r" in find(bar.render(), "review-pick").style);

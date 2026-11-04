@@ -151,6 +151,10 @@ const timers = [], tick = () => timers.splice(0).forEach(f => f(cx));
   assert.ok(pane.review.files.every(f => f.hunks));
   // Its pane header, and a tab of its own, say what it reviews.
   assert.deepEqual(plain(sharedStore.get("review.titles")), { b: "review · fix vs origin/main" });
+  // The Review bar reads which repository it shows from here; no change, no write: every write redraws every mod.
+  assert.deepEqual(plain(sharedStore.get("review.shown")), { b: { root: "/repo" } });
+  const published = sharedStore.get("review.shown"); pane.render(cx);
+  assert.equal(sharedStore.get("review.shown"), published);
   // Polling a run asks for no rows and keeps the ones it has.
   pane.load(cx, true);
   await new Promise(setImmediate);

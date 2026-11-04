@@ -275,6 +275,16 @@ export default class ReviewPane extends View {
     setShared(`${PANE}.status`, Object.fromEntries(word ? [...live, [this.tab, word]] : live));
   }
 
+  // What this tab's pane shows, for the Review bar: Herdr gives a mod pane no folder, and a tab of its own has no terminal to borrow one from.
+  publish() {
+    const mine = panes().filter(p => p.mod === PANE), all = shared(`${PANE}.shown`) ?? {};
+    if (!mine.some(p => p.tab === this.tab)) return;
+    const live = Object.entries(all).filter(([tab]) => tab !== this.tab && mine.some(p => p.tab === tab));
+    // As report(): only a change, and tabs without a review pane drop out.
+    if (all[this.tab]?.root === this.root && live.length === Object.keys(all).length - 1) return;
+    setShared(`${PANE}.shown`, Object.fromEntries([...live, [this.tab, { root: this.root }]]));
+  }
+
   // The settings panel reads the daemon's agents and shared settings each time it opens: the browser may have changed them.
   loadSettings(cx) {
     const root = this.root;
@@ -675,6 +685,7 @@ export default class ReviewPane extends View {
       this.remember();
       this.open(request.page, cx);
     }
+    this.publish();
     if (this.review && JSON.stringify(colors(t)) !== this.colorsKey) {
       for (const file of this.review.files) delete file.hunks;
       this.asked.clear(); this.version++;
