@@ -15,7 +15,7 @@ Where a review opens is `open` in `mods/pulls-review/config.json`:
 - `"browser"`: the fork in the browser (`jin.review -d`).
 - `"official"`: the `pulls.review` CLI. Each worktree gets its own server, which herdr-core keeps running in the background (`hc ls --label pulls-review.root=<folder>`; stop one with `hc kill <address>`). The first open signs the browser in; later ones open a new tab on the same server.
 
-With the fork (`"herdr"`, `"pwa"`, `"browser"`), a click on a count also starts the diff's AI analysis, or follows the one already running. A pick from the logo's menu doesn't.
+With `"pwa"` or `"browser"`, a click on a count also starts the diff's AI analysis, or follows the one already running. A pick from the logo's menu doesn't. In `"herdr"` the pane's own setting decides, as above.
 
 In `"herdr"` mode the pane's tab and header show its analysis with an agent's marks: a spinner while it runs; if it ended while you were on another tab, a dot when it finished or `!` when it failed, until you look. It isn't an agent, so it stays out of the agents list and Inbox.
 

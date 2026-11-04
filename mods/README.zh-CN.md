@@ -15,7 +15,7 @@ Review 栏只显示有的内容：`4 ahead of main`（当前分支上默认分�
 - `"browser"`：用 fork 在浏览器里打开（`jin.review -d`）。
 - `"official"`：`pulls.review` CLI。每个工作树一个服务，由 herdr-core 在后台托管（`hc ls --label pulls-review.root=<目录>` 查看，`hc kill <address>` 停止）。第一次打开时浏览器完成登录，之后在同一个服务上打开新标签页。
 
-用 fork 时（`"herdr"`、`"pwa"`、`"browser"`），点击计数还会开始这份 diff 的 AI 分析；已有分析在跑就直接接上。从 logo 菜单里选的不会。
+用 `"pwa"` 或 `"browser"` 时，点击计数还会开始这份 diff 的 AI 分析；已有分析在跑就直接接上。从 logo 菜单里选的不会。`"herdr"` 模式下由窗格自己的设置决定，见上文。
 
 `"herdr"` 模式下，窗格所在的标签和窗格标题栏用 agent 的标记显示分析状态：运行中转圈；如果结束时你在别的标签，完成显示圆点、失败显示 `!`，看过后消失。它不是 agent，所以不进 agents 列表和 Inbox。
 
