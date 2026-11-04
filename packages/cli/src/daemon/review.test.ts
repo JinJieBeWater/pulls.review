@@ -9,7 +9,7 @@ import { createCacheRepositories } from '@pulls.review/core/cache'
 import { createLocalSource } from '@pulls.review/core/local'
 import { createStorage } from 'unstorage'
 import { afterEach, expect, it } from 'vitest'
-import { fullRows, hunkRows, readFullFile, readReview, resolveGroups, setReviewed } from './review'
+import { fullRows, hunkRows, readFullFile, readReview, readStatus, resolveGroups, setReviewed } from './review'
 
 const exec = promisify(execFile)
 const colors = { foreground: '#cccccc', keyword: '#ff00ff', string: '#00ff00', comment: '#808080' }
@@ -89,6 +89,9 @@ it('reads a page as the pane draws it, keeps reviewed marks, and flags a reviewe
   // Rows only for the files asked for: a large diff's rows run to megabytes.
   const some = await readReview({ cwd: root, page: '/worktree', colors, cache, running: async () => ({}), agent: true, rows: ['a.ts'] })
   expect(some.files.map(file => [file.path, !!file.hunks])).toEqual([['a.test.ts', false], ['a.ts', true]])
+  // An open's one read: the first group's rows as well as those asked for.
+  const opened = await readReview({ cwd: root, page: '/worktree', colors, cache, running: async () => ({}), agent: true, rows: [], firstRows: true })
+  expect(opened.files.map(file => [file.path, !!file.hunks])).toEqual([['a.test.ts', false], ['a.ts', true]])
 
   const a = first.files.find(file => file.path === 'a.ts')!
   await setReviewed({ cwd: root, page: '/worktree', cache, shas: [a.sha], reviewed: true })
@@ -102,6 +105,24 @@ it('reads a page as the pane draws it, keeps reviewed marks, and flags a reviewe
   // Marking it again is the verdict on its current content.
   await setReviewed({ cwd: root, page: '/worktree', cache, shas: [changed.files.find(file => file.path === 'a.ts')!.sha], reviewed: true })
   expect((await read()).files.find(file => file.path === 'a.ts')).toMatchObject({ reviewed: true, changed: false })
+})
+
+it('says whether a page\'s analysis runs from its key, without reading the diff', async () => {
+  const { root } = await repo()
+  const cache = createCacheRepositories(createStorage())
+  const { key } = await readReview({ cwd: root, page: '/worktree', colors, cache, running: async () => ({}), agent: false })
+  const asked: string[] = []
+  const running = async (key: string) => {
+    asked.push(key)
+    return { streamId: 's', progress: { step: 2, kind: 'thinking' as const } }
+  }
+  expect(await readStatus({ cwd: root, page: '/worktree', running })).toEqual({ running: true, progress: { step: 2, kind: 'thinking' } })
+  expect(asked).toEqual([key])
+  expect(await readStatus({ cwd: root, page: '/worktree', running: async () => ({ error: 'failed' }) })).toEqual({ running: false, error: 'failed' })
+  // A range git can't resolve: its diff can't be read, its key can.
+  await expect(readReview({ cwd: root, page: '/compare/nope...gone', colors, cache, running: async () => ({}), agent: false })).rejects.toThrow()
+  expect(await readStatus({ cwd: root, page: '/compare/nope...gone', running: async () => ({}) })).toEqual({ running: false })
+  await expect(readStatus({ cwd: root, page: '/elsewhere', running: async () => ({}) })).rejects.toThrow('No review at /elsewhere')
 })
 
 it('shows the saved analysis, outdated once the diff moves on', async () => {

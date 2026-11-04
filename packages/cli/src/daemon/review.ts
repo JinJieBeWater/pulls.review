@@ -230,6 +230,11 @@ export async function pageTarget(cwd: string, page: string): Promise<string> {
   return target
 }
 
+/** A page's cache key, which needs no diff. */
+async function pageKey(cwd: string, page: string): Promise<string> {
+  return createLocalSource({ cwd, target: await pageTarget(cwd, page) }).key()
+}
+
 export class ReviewError extends Error {
   constructor(readonly status: number, message: string) {
     super(message)
@@ -250,9 +255,10 @@ export async function readReview(options: {
   agent: boolean
   /** The files whose highlighted rows to include; all of them when omitted. */
   rows?: string[]
+  /** The first group's files get their rows too, so an open needs one read (plans/fork/05). */
+  firstRows?: boolean
 }): Promise<Review> {
   const { cwd, page, colors, cache, running, agent } = options
-  const wanted = options.rows && new Set(options.rows)
   const source = createLocalSource({ cwd, target: await pageTarget(cwd, page) })
   const [key, diff] = await Promise.all([source.key(), source.fetch()])
   const head = diff.head?.sha ?? ''
@@ -263,6 +269,10 @@ export async function readReview(options: {
   const groups = llm ?? await ruleBased.analyze(diff)
   const changed = new Set(entry.changedSinceReviewed)
   const state: AnalysisState = run.streamId ? 'running' : !llm ? 'none' : llm.headSha === head ? 'current' : 'outdated'
+  const resolved = resolveGroups(groups.groups, diff.files)
+  const first = options.firstRows ? resolved[0] : undefined
+  // The first group's own files and its children's, as the pane's `groupFiles`.
+  const wanted = options.rows && new Set([...options.rows, ...first ? [first, ...first.children].flatMap(group => group.files) : []])
   return {
     key,
     title: diff.title,
@@ -270,7 +280,7 @@ export async function readReview(options: {
     head: diff.head,
     commits: (diff.commits ?? []).map(commit => ({ sha: commit.sha, subject: commit.message.split('\n')[0]!, author: commit.author?.name, date: commit.date })),
     source: llm ? 'llm' : 'rule-based',
-    groups: resolveGroups(groups.groups, diff.files),
+    groups: resolved,
     files: diff.files.map(({ hunks, ...file }) => ({
       ...file,
       reviewed: reviewed.has(file.sha),
@@ -283,11 +293,17 @@ export async function readReview(options: {
   }
 }
 
+/** Whether a page's analysis runs, from its key and the worktree server alone: polling a run reads no diff (plans/fork/05). */
+export async function readStatus(options: { cwd: string, page: string, running: (key: string) => Promise<RunningState> }): Promise<{ running: boolean, progress?: RunningState['progress'], error?: string }> {
+  const { streamId, progress, error } = await options.running(await pageKey(options.cwd, options.page))
+  return { running: !!streamId, progress, error }
+}
+
 /** Sets reviewed marks and clears "changed since reviewed" for those files, as `DiffsStore.setReviewed` does. */
 export async function setReviewed(options: { cwd: string, page: string, cache: CacheRepositories, shas: string[], reviewed: boolean }): Promise<void> {
   const { cwd, page, cache, shas, reviewed } = options
   await cache.reviewMarks.set(shas, reviewed)
-  const key = await createLocalSource({ cwd, target: await pageTarget(cwd, page) }).key()
+  const key = await pageKey(cwd, page)
   const entry = await cache.diffs.get(key)
   if (!entry?.changedSinceReviewed?.length)
     return

@@ -3,11 +3,13 @@ import type { Socket } from 'node:net'
 import type { CommitEvent } from './commits'
 import type { Worktree } from './schema'
 import type { SharedSettings } from './settings'
+import { execFileSync } from 'node:child_process'
 import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
 import { rm } from 'node:fs/promises'
 import { createServer, request } from 'node:http'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import process from 'node:process'
 import { PassThrough } from 'node:stream'
 import { afterEach, expect, it, vi } from 'vitest'
 import { detectAgents } from '../agents'
@@ -184,6 +186,38 @@ it('answers the Herdr pane: validates its requests, says why it cannot analyze, 
   registry.find.mockResolvedValueOnce(undefined)
   registry.addCurrent.mockResolvedValueOnce(undefined)
   expect((await post('/api/review/analyze', { path: '/elsewhere', page: '/worktree' })).status).toBe(422)
+})
+
+it('gives the pane an open\'s first group in one read, and a run\'s status without reading the diff', async () => {
+  const { call, options, registry, children } = await fixture()
+  const root = mkdtempSync(join(tmpdir(), 'pulls-daemon-status-'))
+  cleanup.push(() => rm(root, { recursive: true, force: true }))
+  const git = (...args: string[]) => execFileSync('git', ['-c', 'user.name=Test', '-c', 'user.email=test@example.com', ...args], { cwd: root, env: { ...process.env, HOME: root, GIT_CONFIG_NOSYSTEM: '1' } })
+  git('init', '-b', 'main')
+  writeFileSync(join(root, 'a.ts'), 'const a = 1\n')
+  git('add', '.')
+  git('commit', '-m', 'initial')
+  writeFileSync(join(root, 'a.ts'), 'const a = 22\n')
+  const tree = { id: 'main-123', path: root, branch: 'main' }
+  registry.find.mockResolvedValue(tree)
+  const post = (path: string, body: unknown) => call(path, { method: 'POST', headers: { origin: options.origin }, body: JSON.stringify({ path: root, ...body as object }) })
+
+  const opened = await (await post('/api/review', { page: '/worktree', colors: {}, rows: [], firstRows: true })).json()
+  expect(opened.files.map((file: { path: string, hunks?: unknown }) => [file.path, !!file.hunks])).toEqual([['a.ts', true]])
+
+  // A range git can't resolve: a read of its diff fails, its status doesn't. No server started yet: nothing runs.
+  expect((await post('/api/review', { page: '/compare/nope...gone', colors: {} })).status).toBe(500)
+  const status = await post('/api/review/status', { page: '/compare/nope...gone' })
+  expect(status.status).toBe(200)
+  expect(await status.json()).toEqual({ running: false })
+  expect(children.get).not.toHaveBeenCalled()
+
+  const running = vi.fn(async () => ({ streamId: 's', progress: { step: 1, kind: 'thinking' as const } }))
+  children.peek.mockReturnValue({ running } as never)
+  expect(await (await post('/api/review/status', { page: '/worktree' })).json()).toEqual({ running: true, progress: { step: 1, kind: 'thinking' } })
+  expect(running).toHaveBeenCalledWith(opened.key)
+  expect(children.peek).toHaveBeenCalledWith(tree)
+  expect((await post('/api/review/status', { page: '/elsewhere' })).status).toBe(400)
 })
 
 it('exchanges a PWA launch token for a cookie and page without navigating the shell', async () => {

@@ -12,7 +12,7 @@ import * as v from 'valibot'
 import { detectAgents } from '../agents'
 import { routeId } from './proxy'
 import { worktreeId, worktrees } from './registry'
-import { ColorsSchema, createReviewCaches, readFullFile, readReview, ReviewError, setReviewed } from './review'
+import { ColorsSchema, createReviewCaches, readFullFile, readReview, readStatus, ReviewError, setReviewed } from './review'
 import { COMMAND, PWA_PROTOCOL } from './schema'
 import { COOKIE, createLaunchTokens, hasSession, requestGuard } from './security'
 import { agentChoice, defaultLocale, SharedSettingsSchema } from './settings'
@@ -62,6 +62,11 @@ export function createDaemonApp(options: {
       throw new ReviewError(422, 'Not a git repository')
     void commits.rescan()
     return tree
+  }
+
+  /** The analysis running for a cache key in a worktree; no server started yet: nothing can be running. */
+  function running(tree: Worktree) {
+    return (key: string) => Promise.resolve(children.peek(tree)).then(server => server?.running(key) ?? {}).catch(() => ({}))
   }
 
   /** A pane request: its body checked, its worktree found; a failure answers with its message for the pane to show. */
@@ -209,16 +214,17 @@ export function createDaemonApp(options: {
     const token = launches.issue(path)
     return { url: `${origin}/login?token=${token}`, path }
   })
-  app.post('/api/review', event => review(event, v.object({ ...reviewSchema.entries, colors: ColorsSchema, rows: v.optional(v.pipe(v.array(v.string()), v.maxLength(5000))) }), async ({ page, colors, rows }, tree) => readReview({
+  app.post('/api/review', event => review(event, v.object({ ...reviewSchema.entries, colors: ColorsSchema, rows: v.optional(v.pipe(v.array(v.string()), v.maxLength(5000))), firstRows: v.optional(v.boolean()) }), async ({ page, colors, rows, firstRows }, tree) => readReview({
     cwd: tree.path,
     page,
     colors,
     cache: await caches(tree.path),
-    // No server started yet: nothing can be running.
-    running: key => Promise.resolve(children.peek(tree)).then(server => server?.running(key) ?? {}).catch(() => ({})),
+    running: running(tree),
     agent: !!agentChoice(await settings.read()),
     rows,
+    firstRows,
   })))
+  app.post('/api/review/status', event => review(event, reviewSchema, async ({ page }, tree) => readStatus({ cwd: tree.path, page, running: running(tree) })))
   app.post('/api/review/analyze', event => review(event, v.object({ ...reviewSchema.entries, force: v.optional(v.boolean()) }), async ({ page, force }, tree) => {
     const choice = agentChoice(await settings.read())
     if (!choice) {
