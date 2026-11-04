@@ -5,7 +5,7 @@
 
 import { div, svg, image } from "gpui-kit";
 import { h_flex, v_flex, InputState, Input, HoverCard } from "gpui-base";
-import { spaces, panes, focused, exec, watchFolder, window, openOverlay, closeOverlay, props, shared, theme, settings } from "herdr";
+import { spaces, panes, focused, exec, watchFolder, window, openOverlay, closeOverlay, props, setShared, shared, theme, settings } from "herdr";
 
 const MOD = "pulls-review";
 
@@ -36,6 +36,8 @@ export function reviewLocation() {
 
 // Reads write nothing under .git, so the folder watch doesn't wake on them.
 export const git = (cwd, args) => exec("git", ["--no-optional-locks", "-c", "core.fsmonitor=false", ...args], { cwd });
+
+export const browserPath = page => encodeURI(page).replaceAll("#", "%23");
 
 // Each location keeps its last read, so switching back shows it at once and switching away never shows the old one.
 // Focus is checked every 250 ms (memory reads only); git is read on a new location, a change in the worktree, else every 10 s.
@@ -126,6 +128,11 @@ const branchArgs = (b) => [`${props().baseRef}...${b.name}`];
 // No analysis here: browsing the menu's commits mustn't start and bill one per click.
 const openPick = (args) => { closeOverlay(props().overlay); openDiff(props().root, args); };
 
+// Another page of the diff the review pane shows: a request as open.js's, with the base that keeps that diff's commits.
+const showPage = ({ tab, root, base }, page) => setShared("review", { tab, root, page, base, n: Date.now() });
+const showWithin = (page) => { closeOverlay(props().overlay); showPage(props().within, page); };
+const pickCommit = (c) => (props().within ? showWithin(`/commit/${c.sha}`) : openPick([c.sha]));
+
 function reviewMatches(view) {
   const query = view.search.value().trim().toLowerCase(), { commits, branches } = props();
   return {
@@ -139,7 +146,7 @@ export function initReviewMenu(view) {
   view.search.on("change", (_e, cx) => cx.notify());
   view.search.on("submit", () => {
     const { commits, branches } = reviewMatches(view);
-    if (commits[0]) openPick([commits[0].sha]);
+    if (commits[0]) pickCommit(commits[0]);
     else if (branches[0]) openPick(branchArgs(branches[0]));
   });
   view.search.focus();
@@ -147,22 +154,23 @@ export function initReviewMenu(view) {
 
 // The logo's menu, this mod opened as an overlay with props.menu (main.js).
 export function reviewMenu(view) {
-  const t = theme(), { base, height } = props(), { commits, branches } = reviewMatches(view);
+  const t = theme(), { base, height, within } = props(), { commits, branches } = reviewMatches(view);
   const title = (text) => div().h(24).px(8).flex_none().flex().items_center().text_size(11).text_color(t.dim).child(text);
-  const row = (id, name, args, ...cells) => h_flex().id(id).h(32).px(8).gap(8).flex_none().items_center().rounded(6).text_color(t.foreground)
-    .hover(s => s.bg(t.hover)).role("button").accessibility_label(name).on_click(() => openPick(args)).children(cells);
+  const row = (id, name, action, ...cells) => h_flex().id(id).h(32).px(8).gap(8).flex_none().items_center().rounded(6).text_color(t.foreground)
+    .hover(s => s.bg(t.hover)).role("button").accessibility_label(name).on_click(action).children(cells);
   // A popup's height is only a maximum: this one sets its own, for the list to scroll inside and to hold still while searching.
   return v_flex().id("review-menu").w_full().h(height).p(5).bg(t.popover).text_size(13)
     .child(h_flex().h(32).mb(4).px(8).gap(8).flex_none().items_center()
       .child(svg("mods/workspace-chrome/search.svg").size(13).flex_none().text_color(t.dim))
       .child(Input.new(view.search).flex_1().h_full().text_size(13).text_color(t.foreground)))
     .child(v_flex().id("review-list").flex_1().min_h(0).overflow_y_scroll()
+      .when(Boolean(within), el => el.child(row("review-all", "Review all changes", () => showWithin(within.base), div().flex_1().child("All changes")).when(!within?.sha, s => s.bg(t.hover))))
       .when(commits.length > 0, el => el.child(title("Commits")).children(commits.map(c =>
-        row(`review-commit-${c.sha}`, `Review commit ${c.subject}`, [c.sha],
-          div().w(58).flex_none().text_color(t.dim).child(c.sha.slice(0, 7)), div().flex_1().min_w(0).truncate().child(c.subject), div().flex_none().text_size(12).text_color(t.dim).child(c.when.replace(/ ago$/, ""))))))
+        row(`review-commit-${c.sha}`, `Review commit ${c.subject}`, () => pickCommit(c),
+          div().w(58).flex_none().text_color(t.dim).child(c.sha.slice(0, 7)), div().flex_1().min_w(0).truncate().child(c.subject), div().flex_none().text_size(12).text_color(t.dim).child(c.when.replace(/ ago$/, ""))).when(c.sha === within?.sha, s => s.bg(t.hover)))))
       .when(commits.length > 0 && branches.length > 0, el => el.child(div().h(1).mx(6).my(4).flex_none().bg(t.border)))
       .when(branches.length > 0, el => el.child(title(`Branches vs ${base}`)).children(branches.map(b =>
-        row(`review-branch-${b.name}`, `Review branch ${b.name}, ${b.count} ahead of ${base}`, branchArgs(b),
+        row(`review-branch-${b.name}`, `Review branch ${b.name}, ${b.count} ahead of ${base}`, () => openPick(branchArgs(b)),
           div().flex_1().min_w(0).truncate().child(b.name), div().flex_none().text_size(12).text_color(t.dim).child(String(b.count))))))
       .when(!commits.length && !branches.length, el => el.child(div().p(8).text_color(t.dim).child("No matches"))));
 }
@@ -174,12 +182,19 @@ export function reviewBar(view, t, stop) {
   const n = (count, noun) => `${count} ${noun}${count === 1 ? "" : "s"}`;
   // A narrow bar's layout sets it (Herdr T3's bar-measure): the counts alone, their colors telling them apart. Unset, the words too.
   const compact = shared("bar.compact");
+  // What the focused tab's review pane shows, when it's this repository's; `sha`, when that's one commit of its diff.
+  const tab = focused()?.tab, reviewed = shared("review.shown")?.[tab], here = reviewed?.root === r.root ? reviewed : null;
+  const sha = here?.page?.startsWith("/commit/") && here.page !== here.base ? here.page.slice("/commit/".length) : null;
+  const list = here?.commits ?? [], index = sha ? list.findIndex(c => c.sha === sha) : -1;
+  const within = here && (sha || list.length > 1) ? { tab, root: r.root, base: here.base, sha } : null;
+  // The page a count opens (open.js's pageFor, which it needn't ask git for here).
+  const isShown = (args) => here?.base === (args[0] === "--worktree" ? "/worktree" : browserPath(args[0] ? `/compare/${args[0]}` : `/branch/${r.branch}`));
   // The accessibility label says what each count compares, which the short label can't.
   // The count carries the color; what it counts stays quiet beside it.
   // 24, the outline's inside: a hover card's wrapper has no height for h_full to fill. Its label is the name's first part.
   // Compact, the label gives back the words the count lost, `· merged?` included.
   const item = ([id, count, noun, ansi, name, args], last) => tip(view.reviewHover, t, id, compact && noun ? `${count} ${noun}` : name.split(": ")[0], h_flex().id(id).h(24).px(8).gap(6).flex_none().items_center()
-    .text_size(12).text_color(t.dim).hover(s => s.bg(t.hover).text_color(t.foreground)).role("button").accessibility_label(name)
+    .text_size(12).text_color(t.dim).hover(s => s.bg(t.hover).text_color(t.foreground)).role("button").accessibility_label(isShown(args) ? `${name}, shown` : name).when(isShown(args), el => el.bg(t.hover).text_color(t.foreground))
     // Herdr has no group hover. Entering the next segment can report before leaving this one.
     .on_hover((on, cx) => { if (on) view.reviewHover = id; else if (view.reviewHover === id) view.reviewHover = null; cx.notify(); })
     .on_click(() => openDiff(r.root, args, true))
@@ -195,19 +210,33 @@ export function reviewBar(view, t, stop) {
     r.ahead > 0 && ["review-ahead", `↑${r.ahead}`, null, 2, `Review ${n(r.ahead, "commit")} to push: on ${r.branch}, not on ${r.upstream}`, [`${r.upstream}...${r.branch}`]],
     r.behind > 0 && ["review-behind", `↓${r.behind}`, null, 1, `Review ${n(r.behind, "commit")} to pull: on ${r.upstream} as of your last fetch, not on ${r.branch}`, [`${r.branch}...${r.upstream}`]],
   ].filter(Boolean);
+  const pressed = (e, cx) => { view.reviewPress = e.position; stop(e, cx); };
+  const openMenu = (_e, cx) => { view.hot = null; cx.notify(); cx.spawn(async () => {
+    const picks = await readPicks(r), { branches } = picks;
+    // Within a review, its own commits, newest first as the log's.
+    const commits = within ? [...list].reverse() : picks.commits;
+    if (!commits.length && !branches.length) return;
+    const height = Math.min(480, 10 + 36 + (within ? 32 : 0) + (commits.length ? 24 + commits.length * 32 : 0) + (commits.length && branches.length ? 9 : 0) + (branches.length ? 24 + branches.length * 32 : 0));
+    openOverlay({ mod: MOD, kind: "popup", at: underBar(view.reviewPress), width: 480, height, props: { menu: "review", root: r.root, base: r.base, baseRef: r.baseRef, commits, branches, height, within } });
+  }); };
+  // One commit shown: its place, opening the menu, between steps to the older and newer ones.
+  const step = (id, glyph, label, commit, last) => h_flex().id(id).h(24).px(6).flex_none().items_center().text_size(12).text_color(commit ? t.dim : t.border).role("button").accessibility_label(label)
+    .when(Boolean(commit), el => el.hover(s => s.bg(t.hover).text_color(t.foreground)).on_click(() => showPage(within, `/commit/${commit.sha}`)))
+    .when(Boolean(last), el => el.rounded_r(6)).child(glyph);
+  const place = !sha ? [] : [div().w(1).h(14).flex_none().bg(t.border),
+    step("commit-older", "‹", "Older commit", index > 0 && list[index - 1]),
+    h_flex().id("review-commits").h(24).px(2).flex_none().items_center().text_size(12).text_color(t.foreground).hover(s => s.bg(t.hover)).role("button").accessibility_label("Pick another commit of this review")
+      .on_mouse_down("left", pressed).on_click(openMenu)
+      .child(index === -1 ? sha.slice(0, 7) : compact ? `${index + 1}/${list.length}` : `Commit ${index + 1} of ${list.length}`),
+    step("commit-newer", "›", "Newer commit", index >= 0 && list[index + 1], true)];
   // Outlined, not filled: a fill would read as an active tab. Each part's fill runs to the outline and the rules.
   return h_flex().id("pulls-review").h(26).flex_none().items_center().rounded(6).border(1).border_color(t.border).on_mouse_down("left", stop)
     // Stays with no counts: on a clean default branch it's the only way in.
-    .child(tip(view.hot, t, "review-pick", "Pick a commit or branch to review", h_flex().id("review-pick").h(24).px(5).flex_none().items_center().rounded_l(6).when(!segments.length, el => el.rounded_r(6))
+    .child(tip(view.hot, t, "review-pick", "Pick a commit or branch to review", h_flex().id("review-pick").h(24).px(5).flex_none().items_center().rounded_l(6).when(!segments.length && !sha, el => el.rounded_r(6))
       .hover(s => s.bg(t.hover)).on_hover(glow(view, "review-pick")).role("button").accessibility_label("Pick a commit or branch to review")
-      .on_mouse_down("left", (e, cx) => { view.reviewPress = e.position; stop(e, cx); })
-      .on_click((_e, cx) => { view.hot = null; cx.notify(); cx.spawn(async () => {
-        const { commits, branches } = await readPicks(r);
-        if (!commits.length && !branches.length) return;
-        const height = Math.min(480, 10 + 36 + (commits.length ? 24 + commits.length * 32 : 0) + (commits.length && branches.length ? 9 : 0) + (branches.length ? 24 + branches.length * 32 : 0));
-        openOverlay({ mod: MOD, kind: "popup", at: underBar(view.reviewPress), width: 480, height, props: { menu: "review", root: r.root, base: r.base, baseRef: r.baseRef, commits, branches, height } });
-      }); })
+      .on_mouse_down("left", pressed).on_click(openMenu)
       // image, not svg: svg would draw the logo in one tint.
       .child(image(`mods/${MOD}/logo.svg`).w(14).h(14).flex_none())))
-    .children(segments.flatMap((s, i) => [div().w(1).h(14).flex_none().bg(t.border), item(s, i === segments.length - 1)]));
+    .children(segments.flatMap((s, i) => [div().w(1).h(14).flex_none().bg(t.border), item(s, !sha && i === segments.length - 1)]))
+    .children(place);
 }

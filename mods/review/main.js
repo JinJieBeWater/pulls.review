@@ -129,7 +129,7 @@ export default class ReviewPane extends View {
     // Starting an analysis on open is this pane's own choice, off by default: the app never starts a paid, slow AI run
     // by itself. The agent, model and language are the daemon's shared settings.
     this.autoAnalyze = pref("autoAnalyze") === true;
-    // The one popup open over the diff, if any: "settings", "status", "fold" or "commits".
+    // The one popup open over the diff, if any: "settings", "status" or "fold".
     this.popup = null; this.closedPopup = null; this.popupClosedAt = 0;
     this.agents = null; this.shared = null; this.settingsError = null;
     this.height = 600; this.headerHidden = false; this.scrolledDownBy = 0; this.baseCommits = null;
@@ -275,14 +275,19 @@ export default class ReviewPane extends View {
     setShared(`${PANE}.status`, Object.fromEntries(word ? [...live, [this.tab, word]] : live));
   }
 
-  // What this tab's pane shows, for the Review bar: Herdr gives a mod pane no folder, and a tab of its own has no terminal to borrow one from.
+  // What this tab's pane shows, for the Review bar, which picks what it shows next: Herdr gives a mod pane no folder, and a
+  // tab of its own has no terminal to borrow one from.
   publish() {
-    const mine = panes().filter(p => p.mod === PANE), all = shared(`${PANE}.shown`) ?? {};
+    const mine = panes().filter(p => p.mod === PANE), all = shared(`${PANE}.shown`) ?? {}, now = all[this.tab];
     if (!mine.some(p => p.tab === this.tab)) return;
+    // The diff's commits, oldest first: on one commit's page, still its base's.
+    const commits = this.baseCommits ?? this.review?.commits ?? [];
     const live = Object.entries(all).filter(([tab]) => tab !== this.tab && mine.some(p => p.tab === tab));
     // As report(): only a change, and tabs without a review pane drop out.
-    if (all[this.tab]?.root === this.root && live.length === Object.keys(all).length - 1) return;
-    setShared(`${PANE}.shown`, Object.fromEntries([...live, [this.tab, { root: this.root }]]));
+    if (now?.root === this.root && now.page === this.page && now.base === this.base && now.commits?.length === commits.length
+      && commits.every((c, i) => c.sha === now.commits[i].sha) && live.length === Object.keys(all).length - 1) return;
+    const shown = { root: this.root, page: this.page, base: this.base, commits: commits.map(c => ({ sha: c.sha, subject: c.subject, when: c.date ? timeAgo(c.date) : "" })) };
+    setShared(`${PANE}.shown`, Object.fromEntries([...live, [this.tab, shown]]));
   }
 
   // The settings panel reads the daemon's agents and shared settings each time it opens: the browser may have changed them.
@@ -452,33 +457,6 @@ export default class ReviewPane extends View {
       .on_mouse_down("left", (_e, cx) => cx.stop_propagation())
       .on_scroll_wheel((_e, cx) => cx.stop_propagation())
       .on_mouse_down_out((_e, cx) => this.closePopup(cx));
-  }
-
-  // The diff's commits and the one shown on its own, if any (index -1 when it isn't in the list).
-  commitNav() {
-    const commits = this.baseCommits ?? this.review?.commits ?? [];
-    const sha = this.page?.startsWith("/commit/") && this.page !== this.base ? this.page.slice("/commit/".length) : null;
-    return { commits, sha, index: sha ? commits.findIndex(c => c.sha === sha) : -1 };
-  }
-
-  // As the app's DiffCommitSelector dropdown: All changes, then every commit with its subject, short sha and age;
-  // a dot marks the one shown.
-  commitMenu(t) {
-    const { commits, sha } = this.commitNav();
-    const item = (id, selected, page, children) => h_flex().id(id).flex_none().h(28).pl(28).pr(8).gap(8).items_center().rounded(6).relative()
-      .hover(s => s.bg(HOVER)).role("button").on_click((_e, cx) => { this.closePopup(cx); this.open(page, cx); })
-      .when(selected, el => el.child(div().absolute().left(11).size(6).rounded_full().bg(t.accent)))
-      .children(children);
-    // As the settings panel: the panel is capped (the app's max-h-80 list, within the pane) and only the list scrolls.
-    return this.popover(t, "review-commit-menu").w(Math.min(480, this.width - 16)).max_h(Math.max(160, Math.min(368, this.height - 56))).overflow_hidden().p(4).gap(2)
-      .child(item("commit-all", !sha, this.base, ["All changes"]))
-      .child(div().h(1).mx(4).my(2).bg(t.border))
-      .child(v_flex().id("commit-menu-list").min_h(0).flex_shrink_1().overflow_y_scroll()
-        .children(commits.map(c => item(`commit-${c.sha}`, c.sha === sha, `/commit/${c.sha}`, [
-          div().flex_1().min_w(0).truncate().child(c.subject),
-          div().flex_none().text_size(11).font_family(MONO).opacity(FADE).child(c.sha.slice(0, 7)),
-          ...c.date ? [div().flex_none().text_size(11).opacity(FADE).child(timeAgo(c.date))] : [],
-        ]))));
   }
 
   // As the app's DiffCollapseMenu: every file of the diff at once, not just the group shown. The file at the view's top
@@ -681,7 +659,9 @@ export default class ReviewPane extends View {
     if (request && request.tab === this.tab && request.n > this.handled) {
       this.handled = request.n;
       if (request.root !== this.root) { this.root = request.root; this.watching = null; this.seen.clear(); this.collapsed.clear(); this.page = null; }
-      this.base = request.page; this.baseCommits = null;
+      // With a base, the Review bar picking another page of the same diff: its commits stay.
+      this.base = request.base ?? request.page;
+      if (!request.base) this.baseCommits = null;
       this.remember();
       this.open(request.page, cx);
     }
@@ -738,7 +718,6 @@ export default class ReviewPane extends View {
       .when(this.popup === "fold" && Boolean(this.review) && !hidden, el => el.child(div().absolute().top(44).right(44).child(this.foldMenu(t))))
       // Under its button: right of it the fold menu's and the gear (24px each, 8px apart, 12px in), and the newer-commit
       // arrow while one commit is shown.
-      .when(this.popup === "commits" && Boolean(this.review) && !hidden, el => el.child(div().absolute().top(44).right(76 + (this.commitNav().sha ? 32 : 0)).child(this.commitMenu(t))))
       .when(this.popup === "status" && Boolean(this.review) && (this.analysisStatus().running || Boolean(this.analysisStatus().error)), el => el.child(div().absolute().top(44).right(8).child(this.statusPanel(t))));
   }
 
@@ -819,28 +798,17 @@ export default class ReviewPane extends View {
         : error ? { text: "Analysis failed", lead: `${PH}/warning-circle-duotone.svg`, color: "ansi1", run: (cx) => this.togglePopup("status", cx) }
         : { text: a.state === "none" ? "Analyze with AI" : "Re-analyze", lead: `${PH}/sparkle-duotone.svg`, primary: a.state === "none", note: a.state === "outdated" ? "(outdated)" : null, run: (cx) => this.analyze(cx, a.state === "current") };
       buttons.push({ id: "analyze", ...analyze, ...compact && { text: null, icon: analyze.lead, label: analyze.text } });
-      // As the app's DiffCommitSelector: the count, or which commit is shown with arrows to the older and newer ones.
-      const { commits, sha, index } = this.commitNav(), n = commits.length;
-      if (sha || n > 1) {
-        const step = (offset) => (cx) => this.open(`/commit/${commits[index + offset].sha}`, cx);
-        const text = !sha ? (compact ? String(n) : `${n} commit${n === 1 ? "" : "s"}`) : index === -1 ? sha.slice(0, 7) : compact ? `${index + 1}/${n}` : `Commit ${index + 1} of ${n}`;
-        if (sha) buttons.push({ id: "commit-older", icon: `${PH}/caret-left.svg`, label: "Older commit", disabled: index <= 0, run: step(-1) });
-        buttons.push({ id: "commits", text, lead: `${PH}/git-commit-duotone.svg`, run: (cx) => this.togglePopup("commits", cx) });
-        if (sha) buttons.push({ id: "commit-newer", icon: `${PH}/caret-right.svg`, label: "Newer commit", disabled: index === -1 || index >= n - 1, run: step(1) });
-      }
       buttons.push({ id: "fold-menu", icon: `${PH}/caret-up-down-duotone.svg`, label: "Expand or collapse files", active: this.popup === "fold", run: (cx) => this.togglePopup("fold", cx) });
     }
     // The view (unified or split, files as a tree or a list) is set in the settings, with the analysis.
     buttons.push({ id: "settings", icon: "mods/workspace-chrome/settings.svg", label: "Settings", active: this.popup === "settings", run: (cx) => this.togglePopup("settings", cx) });
     // The diff shown is named in the pane's own header (render's titles), so this one starts with the counts.
-    // One commit shown, an arrow before them goes back to all changes, as the app's header.
-    return { back: Boolean(r && this.commitNav().sha), parts, buttons };
+    return { parts, buttons };
   }
 
   header(t, head) {
     // Narrow, the counts give way and the buttons never.
     return h_flex().id("review-header").h(40).flex_none().px(12).gap(8).items_center().border_b(1).border_color(t.border).bg(t.chrome)
-      .when(head.back, el => el.child(this.iconButton(t, "commit-back", `${PH}/arrow-left.svg`, "Back to all changes", (cx) => this.open(this.base, cx))))
       .children(head.parts.map(p => h_flex().min_w(0).gap(6).items_center().text_size(12).text_color(t[p.color] ?? t.dim)
         .when(p.donut !== undefined, el => el.child(this.donut(t, p.donut, 14)))
         .child(div().min_w(0).truncate().child(p.text))))

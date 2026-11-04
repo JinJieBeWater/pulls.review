@@ -206,6 +206,43 @@ const load = (props = {}, setup) => {
   assert.ok(!overlays.at(-1).props.analyze, "a menu pick doesn't");
   fire(find(menu.render(), "review-branch-Other"), "on_click", {}, cx);
   assert.deepEqual(plain(overlays.at(-1).props.args), ["origin/main...Other"]);
+  // With the review pane showing this repository's diff: its count lit, one commit's place and steps, the menu on its commits.
+  const list = ["c1", "c2", "c3"].map(sha => ({ sha, subject: sha, when: "1 hour ago" }));
+  const pane = (page, base = "/branch/feat", commits = list) => { state["review.shown"] = { b: { root: "/repo", page, base, commits } }; };
+  pane("/branch/feat"); show(r);
+  let lit = bar.render();
+  assert.equal(find(lit, "review-open").style.bg, theme.hover);
+  assert.equal(find(lit, "review-open").style.accessibility_label, "Review the branch: 4 commits on feat, not on origin/main, shown");
+  assert.equal(find(lit, "review-commits"), null, "the whole diff has no place to show");
+  pane("/commit/c2"); lit = bar.render();
+  assert.deepEqual(strings(find(lit, "review-commits")), ["Commit 2 of 3"]);
+  assert.ok("rounded_r" in find(lit, "commit-newer").style && !("rounded_r" in find(lit, "review-open").style), "the last part's fill follows the outline's corner");
+  fire(find(lit, "commit-older"), "on_click", {}, cx);
+  assert.deepEqual([state.review.tab, state.review.root, state.review.page, state.review.base], ["b", "/repo", "/commit/c1", "/branch/feat"]);
+  fire(find(lit, "commit-newer"), "on_click", {}, cx);
+  assert.equal(state.review.page, "/commit/c3");
+  pane("/commit/c3");
+  assert.equal(find(bar.render(), "commit-newer").handlers.on_click, undefined, "no newer commit");
+  pane("/commit/c2");
+  const within = await click(r);
+  assert.deepEqual(plain(within.props.commits.map(c => c.sha)), ["c3", "c2", "c1"], "newest first, as the log's");
+  assert.deepEqual(plain(within.props.within), { tab: "b", root: "/repo", base: "/branch/feat", sha: "c2" });
+  assert.equal(within.height, Math.min(480, 10 + 36 + 32 + 24 + 3 * 32 + 9 + 24 + 32), "the popup fits All changes too");
+  const inMenu = load(within.props).mod;
+  assert.equal(find(inMenu.render(), "review-commit-c2").style.bg, theme.hover, "the commit shown is marked");
+  fire(find(inMenu.render(), "review-commit-c1"), "on_click", {}, cx);
+  assert.deepEqual([state.review.page, state.review.base], ["/commit/c1", "/branch/feat"], "a pick stays in this diff");
+  fire(find(inMenu.render(), "review-all"), "on_click", {}, cx);
+  assert.equal(state.review.page, "/branch/feat");
+  fire(find(inMenu.render(), "review-branch-Other"), "on_click", {}, cx);
+  assert.deepEqual(plain(overlays.at(-1).props.args), ["origin/main...Other"], "a branch is a new diff");
+  // A single commit opened from the log has no commits of its own to step through: the menu stays on the log.
+  pane("/commit/abc", "/commit/abc", [list[0]]);
+  assert.equal((await click(r)).props.within, null);
+  // Another repository's diff beside this terminal: nothing lit.
+  state["review.shown"].b.root = "/other";
+  assert.ok(!("bg" in find(bar.render(), "review-open").style));
+  delete state["review.shown"]; delete state.review;
   // Search narrows both lists; Enter opens the first left.
   const searching = load(spec.props);
   let typed = "", submit;

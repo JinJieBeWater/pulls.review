@@ -2,7 +2,7 @@
 // installed app or the browser) or the official CLI.
 
 import { spaces, panes, focused, exec, hc, window, notify, closeOverlay, run, shared, setShared, appHome, readTextFile } from "herdr";
-import { git, reviewLocation } from "./bar.js";
+import { browserPath, git, reviewLocation } from "./bar.js";
 
 // `open` in this folder's config.json (see mods/README.md):
 // "herdr":    the fork's daemon, drawn in a pane beside the agent (the review mod).
@@ -20,8 +20,6 @@ async function readMode() {
   if (!MODES.includes(open)) throw new Error(`"open" in mods/pulls-review/config.json is one of ${MODES.join(", ")}.`);
   return open;
 }
-
-const browserPath = page => encodeURI(page).replaceAll("#", "%23");
 
 async function cli(command, args, options) {
   try { return await exec(command, args, options); }

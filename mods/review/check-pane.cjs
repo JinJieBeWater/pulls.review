@@ -152,7 +152,7 @@ const timers = [], tick = () => timers.splice(0).forEach(f => f(cx));
   // Its pane header, and a tab of its own, say what it reviews.
   assert.deepEqual(plain(sharedStore.get("review.titles")), { b: "review · fix vs origin/main" });
   // The Review bar reads which repository it shows from here; no change, no write: every write redraws every mod.
-  assert.deepEqual(plain(sharedStore.get("review.shown")), { b: { root: "/repo" } });
+  assert.equal(sharedStore.get("review.shown").b.root, "/repo");
   const published = sharedStore.get("review.shown"); pane.render(cx);
   assert.equal(sharedStore.get("review.shown"), published);
   // Polling a run asks for no rows and keeps the ones it has.
@@ -466,27 +466,17 @@ const timers = [], tick = () => timers.splice(0).forEach(f => f(cx));
   pane.visible = { start: sub + 3, end: sub + 9 }; calls.length = 0; timers.length = 0;
   press("group-subtab-k-button");
   assert.deepEqual(plain(calls.filter(([name]) => name === "scroll")), [["scroll", sub]]);
-  // Under COMPACT the header's text buttons are icons, the commits a count.
+  // Under COMPACT the header's text buttons are icons. The commits are the Review bar's.
   pane.width = 500; drawn.clear(); pane.render(cx);
-  assert.ok(drawn.has("analyze") && drawn.has("commits"));
-  assert.equal(pane.head().buttons.find(b => b.id === "commits").text, "2");
-  // The commits as the app's DiffCommitSelector: a menu of All changes and each commit; with one shown, its place, arrows
-  // to the older and newer ones, and a way back to all changes.
-  press("commits");
-  assert.ok(drawn.has("review-commit-menu") && drawn.has("commit-all") && drawn.has("commit-c1") && drawn.has("commit-c2"));
-  // A floating menu keeps the wheel: Herdr hands it to the diff underneath too unless stopped.
-  let stopped = false;
-  handlers.get("review-commit-menu.on_scroll_wheel")({}, { ...cx, stop_propagation: () => { stopped = true; } });
-  assert.ok(stopped);
-  const opened = [], base = pane.page;
-  pane.open = (page) => opened.push(page);
-  press("commit-c2");
-  assert.ok(pane.popup !== "commits" && !drawn.has("review-commit-menu"));
-  pane.page = "/commit/c2"; drawn.clear(); pane.render(cx);
-  const one = pane.head().buttons;
-  assert.deepEqual([one.find(b => b.id === "commits").text, one.find(b => b.id === "commit-older").disabled, one.find(b => b.id === "commit-newer").disabled], ["2/2", false, true]);
-  press("commit-older"); press("commit-newer"); press("commit-back");
-  assert.deepEqual(opened, ["/commit/c2", "/commit/c1", base]);
+  assert.ok(drawn.has("analyze") && !drawn.has("commits") && !drawn.has("commit-back"));
+  // The bar reads the diff's commits and the page shown; on one commit's page they stay the base's.
+  const base = pane.page, baseEntry = () => sharedStore.get("review.shown").b;
+  assert.deepEqual(plain(baseEntry()), { root: "/repo", page: base, base, commits: [{ sha: "c1", subject: "one", when: "" }, { sha: "c2", subject: "two", when: "" }] });
+  const opened = [];
+  pane.open = (page) => { opened.push(page); pane.page = page; };
+  sharedStore.set("review", { tab: "b", root: "/repo", page: "/commit/c2", base, n: pane.handled + 1 });
+  drawn.clear(); pane.render(cx);
+  assert.deepEqual([opened, pane.base, baseEntry().page, baseEntry().base, baseEntry().commits.length], [["/commit/c2"], base, "/commit/c2", base, 2]);
   delete pane.open; pane.page = base;
   // One popup at a time: a press on another's button closes the open one (a press outside it) and opens its own at once;
   // a press on the open one's own button only closes it.
