@@ -136,14 +136,18 @@ async function readReview(cwd) {
 
 // Read on click, so the bar's 10 s poll stays as cheap as it was.
 // shortcut: the menu holds the newest 200 commits and 20 branches, so search can't reach past them; read more if a repo needs it.
-async function readPicks(r) {
-  const log = await git(r.root, ["log", "-200", "--format=%H%x1f%s%x1f%cr", r.unmerged ? `${r.baseRef}..HEAD` : "HEAD"]);
-  const commits = log.stdout.split("\n").filter(Boolean).map(line => { const [sha, subject, when] = line.split("\x1f"); return { sha, subject, when }; });
+// `log` false inside a review: the menu lists the review's commits.
+async function readPicks(r, log) {
+  const read = log ? await git(r.root, ["log", "-200", "--format=%H%x1f%s%x1f%cr", r.unmerged ? `${r.baseRef}..HEAD` : "HEAD"]) : { stdout: "" };
+  const commits = read.stdout.split("\n").filter(Boolean).map(line => { const [sha, subject, when] = line.split("\x1f"); return { sha, subject, when }; });
   if (!r.baseRef) return { commits, branches: [] };
-  const refs = await git(r.root, ["for-each-ref", "--sort=-committerdate", "--count=21", `--no-merged=${r.baseRef}`, "--format=%(refname:short)", "refs/heads"]);
-  const names = refs.stdout.split("\n").filter(name => name && name !== r.branch).slice(0, 20);
-  const branches = await Promise.all(names.map(async name =>
-    ({ name, count: parseInt((await git(r.root, ["rev-list", "--count", `${r.baseRef}..${name}`])).stdout, 10) || 0 })));
+  // Each branch's count ahead of the base in the same call (Git 2.41); an older Git fails it, and the menu goes without counts.
+  const refs = (format) => git(r.root, ["for-each-ref", "--sort=-committerdate", "--count=21", `--no-merged=${r.baseRef}`, `--format=${format}`, "refs/heads"]);
+  let listed = await refs(`%(refname:short) %(ahead-behind:${r.baseRef})`);
+  if (listed.code !== 0) listed = await refs("%(refname:short)");
+  // A branch name has no spaces.
+  const branches = listed.stdout.split("\n").map(line => line.split(" ")).filter(([name]) => name && name !== r.branch).slice(0, 20)
+    .map(([name, ahead]) => (ahead === undefined ? { name } : { name, count: parseInt(ahead, 10) || 0 }));
   return { commits, branches };
 }
 
@@ -192,8 +196,8 @@ export function reviewMenu(view) {
     // Outside the lists, so All changes and each list's title stay put. Branches first: the few, above up to 200 commits.
     .when(Boolean(within) && !searching, el => el.child(row("review-all", "Review all changes", () => showWithin(within.base), div().flex_1().child("All changes")).when(!within?.sha, s => s.bg(t.hover))))
     .when(branches.length > 0, el => el.child(title(`Branches vs ${base}`)).child(v_flex().id("review-branches").flex_none().overflow_y_scroll().when(commits.length > 0, list => list.max_h(BRANCH_ROWS * 32))
-      .children(branches.map(b => row(`review-branch-${b.name}`, `Review branch ${b.name}, ${b.count} ahead of ${base}`, (_e, cx) => openPick(branchArgs(b), cx),
-        div().flex_1().min_w(0).truncate().child(b.name), div().flex_none().text_size(12).text_color(t.dim).child(String(b.count)))))))
+      .children(branches.map(b => row(`review-branch-${b.name}`, `Review branch ${b.name}` + (b.count === undefined ? "" : `, ${b.count} ahead of ${base}`), (_e, cx) => openPick(branchArgs(b), cx),
+        div().flex_1().min_w(0).truncate().child(b.name), ...(b.count === undefined ? [] : [div().flex_none().text_size(12).text_color(t.dim).child(String(b.count))]))))))
     .when(commits.length > 0 && branches.length > 0, el => el.child(div().h(1).mx(6).my(4).flex_none().bg(t.border)))
     .when(commits.length > 0, el => el.child(title(within ? "Commits in this review" : branch === "(detached)" ? "Commits" : `Commits on ${branch}`))
       .child(v_flex().id("review-commit-list").flex_1().min_h(0).overflow_y_scroll().children(commits.map(c =>
@@ -246,7 +250,7 @@ export function reviewBar(view, t, stop) {
     if (closing || view.readingPicks) return;
     view.readingPicks = true;
     cx.spawn(async () => { try {
-      const picks = await readPicks(r), { branches } = picks;
+      const picks = await readPicks(r, !within), { branches } = picks;
       // Within a review, its own commits, newest first as the log's.
       const commits = within ? [...list].reverse() : picks.commits;
       if (!commits.length && !branches.length) return;

@@ -209,11 +209,17 @@ const load = (props = {}, setup = record) => {
   } finally { fs.rmSync(tmp, { recursive: true, force: true }); }
 
   // The logo reads on click, then its menu's rows open one commit, or one branch against the base.
-  const ranges = [];
-  scope.exec = async (_command, args) => {
+  // Two git processes: the log and one for-each-ref, which counts each branch too; a Git before 2.41 has no
+  // %(ahead-behind) and fails it, and the names come again without counts.
+  const ranges = [], gits = [];
+  let oldGit = false;
+  const exec = scope.exec = async (_command, args) => {
+    gits.push(args.find(a => a === "log" || a === "for-each-ref") ?? args.join(" "));
     if (args.includes("log")) { ranges.push(args.at(-1)); return { code: 0, stdout: "abcdef123456\x1ffix: a\x1f2 hours ago\n" }; }
-    if (args.includes("for-each-ref")) return { code: 0, stdout: "feat\nOther\n" };
-    return { code: 0, stdout: "3\n" };
+    const counting = args.includes("--format=%(refname:short) %(ahead-behind:origin/main)");
+    if (counting) return oldGit ? { code: 128, stdout: "" } : { code: 0, stdout: "feat 0 0\nOther 3 1\n" };
+    if (args.includes("--format=%(refname:short)")) return { code: 0, stdout: "feat\nOther\n" };
+    return { code: 128, stdout: "" };
   };
   const r = { root: "/repo", branch: "feat", base: "main", baseRef: "origin/main", unmerged: 4 };
   let reading;
@@ -227,6 +233,7 @@ const load = (props = {}, setup = record) => {
   };
   const spec = await click(r);
   assert.equal(ranges.at(-1), "origin/main..HEAD", "the branch's own commits");
+  assert.deepEqual(gits.splice(0), ["log", "for-each-ref"]);
   assert.deepEqual(plain(spec.props.branches), [{ name: "Other", count: 3 }], "the current branch isn't offered against itself");
   assert.equal(spec.height, 10 + 36 + 24 + 32 + 9 + 24 + 32, "the popup fits its rows");
   assert.equal(spec.props.height, spec.height, "and the menu sets that height itself: a popup's is only a maximum");
@@ -259,7 +266,9 @@ const load = (props = {}, setup = record) => {
   pane("/commit/c3");
   assert.equal(find(bar.render(), "commit-newer").handlers.on_click, undefined, "no newer commit");
   pane("/commit/c2");
+  gits.length = 0;
   const within = await click(r);
+  assert.deepEqual(gits.splice(0), ["for-each-ref"], "inside a review the menu lists its commits: no log");
   assert.deepEqual(plain(within.props.commits.map(c => c.sha)), ["c3", "c2", "c1"], "newest first, as the log's");
   assert.deepEqual(plain(within.props.within), { tab: "b", root: "/repo", base: "/branch/feat", sha: "c2" });
   assert.equal(within.height, Math.min(480, 10 + 36 + 32 + 24 + 3 * 32 + 9 + 24 + 32), "the popup fits All changes too");
@@ -345,6 +354,13 @@ const load = (props = {}, setup = record) => {
   scope.exec = async () => ({ code: 128, stdout: "" });
   await click(r);
   assert.equal(overlays.length, before, "nothing to pick, no menu");
+  scope.exec = exec;
+  oldGit = true; gits.length = 0;
+  const old = await click(r);
+  assert.deepEqual(gits.splice(0).filter(g => g === "for-each-ref"), ["for-each-ref", "for-each-ref"]);
+  assert.deepEqual(plain(old.props.branches), [{ name: "Other" }], "an older Git: the names without counts");
+  const uncounted = find(load(old.props).mod.render(), "review-branch-Other");
+  assert.deepEqual([strings(uncounted), uncounted.style.accessibility_label], [["Other"], "Review branch Other"]);
 
   // Opened as an overlay (`mod.open:pulls-review`) it reviews the focused pane's worktree and closes itself: in "herdr"
   // mode, a review pane split off the focused one.
