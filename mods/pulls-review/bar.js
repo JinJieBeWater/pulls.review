@@ -18,10 +18,8 @@ const glow = (view, id) => (on, cx) => {
 const lit = (view, id, color = theme().dim) => (view.hot === id ? theme().foreground : color);
 // A hover label as Herdr T3's: `.tooltip()` takes only a string, in the shell's own style. Only while lit: a menu
 // opened from the button hides the pointer's leaving, and the card would stay up over it.
-const tip = (hot, t, id, label, trigger, hint) => HoverCard.new(`tip-${id}`).anchor("top_center").open_delay(300).close_delay(0).trigger(trigger)
-  .content(hot !== id ? div() : v_flex().mt(4).px(8).py(4).rounded(6).border(1).border_color(t.border).bg(t.chrome).shadow_md().text_size(12).text_color(t.foreground)
-    .child(div().child(label))
-    .when(Boolean(hint), el => el.child(div().text_color(t.muted).child(hint))));
+const tip = (hot, t, id, label, trigger) => HoverCard.new(`tip-${id}`).anchor("top_center").open_delay(150).close_delay(0).trigger(trigger)
+  .content(hot !== id ? div() : div().mt(4).px(8).py(4).rounded(6).border(1).border_color(t.border).bg(t.chrome).shadow_md().text_size(12).text_color(t.foreground).child(label));
 // A menu hangs from the bar (40px, as Herdr T3's tab bar) under the click, not on the pointer, where it would cover the
 // bar; the app keeps it in the window. With no press to read (assistive tech clicks without one), the app's default: the pointer.
 const underBar = (press) => press && { x: press.x - 8, y: 40 * settings().zoom };
@@ -176,7 +174,7 @@ export function reviewBar(view, t, stop) {
   const n = (count, noun) => `${count} ${noun}${count === 1 ? "" : "s"}`;
   // The accessibility label says what each count compares, which the short label can't.
   // The count carries the color; what it counts stays quiet beside it.
-  // 24, the outline's inside: a hover card's wrapper has no height for h_full to fill. Its label is the name's first part, its hint the rest.
+  // 24, the outline's inside: a hover card's wrapper has no height for h_full to fill. Its label is the name's first part.
   const item = ([id, count, noun, ansi, name, args], last) => tip(view.reviewHover, t, id, name.split(": ")[0], h_flex().id(id).h(24).px(8).gap(6).flex_none().items_center()
     .text_size(12).text_color(t.dim).hover(s => s.bg(t.hover).text_color(t.foreground)).role("button").accessibility_label(name)
     // Herdr has no group hover. Entering the next segment can report before leaving this one.
@@ -185,7 +183,7 @@ export function reviewBar(view, t, stop) {
     // Hovered, the label turns foreground: the count takes its bright twin (ansi + 8) to stay the lead, same hue.
     .child(div().font_medium().text_color(t[`ansi${view.reviewHover === id ? ansi + 8 : ansi}`]).child(count))
     .when(Boolean(noun), el => el.child(noun))
-    .when(last, el => el.rounded_r(6)), name.split(": ")[1]);
+    .when(last, el => el.rounded_r(6)));
   const segments = [
     // A squash merge leaves the count standing, so a deleted upstream is the visible hint it may be done.
     r.unmerged > 0 && ["review-open", String(r.unmerged), `ahead of ${r.base}${r.gone ? " · merged?" : ""}`, 4, `Review the branch: ${n(r.unmerged, "commit")} on ${r.branch}, not on ${r.baseRef}`

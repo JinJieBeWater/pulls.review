@@ -104,7 +104,7 @@ const load = (props = {}, setup) => {
   assert.equal(find(drawn, "review-behind").style.accessibility_label, "Review 1 commit to pull: on origin/feat as of your last fetch, not on feat");
   assert.equal(walk(drawn).filter(n => "tooltip" in n.style).length, 0, "the shell's tooltip isn't Herdr T3's");
   fire(find(drawn, "review-ahead"), "on_hover", true, cx);
-  assert.deepEqual(strings(find(bar.render(), "tip-review-ahead").style.content), ["Review 2 commits to push", "on feat, not on origin/feat"], "the label splits into what it does and what it compares");
+  assert.deepEqual(strings(find(bar.render(), "tip-review-ahead").style.content), ["Review 2 commits to push"], "the label names what it does; what it compares stays in the accessibility label");
   fire(find(drawn, "review-ahead"), "on_hover", false, cx);
   Object.assign(shown, { pane: "p9", cwd: "/other" });
   assert.equal(find(bar.render(), "pulls-review"), null, "another location never shows this one's counts, even before its own read");
