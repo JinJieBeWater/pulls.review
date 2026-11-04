@@ -99,11 +99,13 @@ const env = {
   shared: (key) => sharedStore.get(key) ?? null, setShared: (key, value) => sharedStore.set(key, value),
   run: (name, args) => calls.push([name, args]), theme: () => ({ foreground: "#eeeeee", ansi1: "#ff0000", ansi2: "#00ff00", dim: "#888888" }),
   watchFolder: () => new Promise(() => {}), FILE: 32, groupFiles, buildItems, pageLabel, contentWidth, fileRows, codeInset, noteWidth,
-  // The daemon: rows only for the files asked for.
+  // The daemon: rows only for the files asked for, and the first group's with `firstRows`; no run going.
   review: async (_root, route, body) => {
     routes.push(route);
     if (route === "/api/review") bodies.push(body);
-    return route !== "/api/review" ? {} : { ...review, files: review.files.map(({ hunks, ...f }) => body.rows.includes(f.path) ? { ...f, hunks } : { ...f }) };
+    if (route === "/api/review/status") return { running: false };
+    const wanted = [...body.rows ?? [], ...body.firstRows ? groupFiles(review.groups[0]) : []];
+    return route !== "/api/review" ? {} : { ...review, files: review.files.map(({ hunks, ...f }) => wanted.includes(f.path) ? { ...f, hunks } : { ...f }) };
   },
   // Two agents, one with a catalog; the settings pick pi with a model of its own.
   request: async (_root, method, path, body) => {
@@ -134,9 +136,9 @@ assert.equal(vm.runInContext('grey("#ff0000")', mainScope), "#363636");
 // A run's progress names the files it reads, not their paths.
 assert.equal(vm.runInContext('progressText({ kind: "reading", paths: [".git/x/agent/1/a.ts", "b.ts", "c"] })', mainScope), "Reading 3 files: a.ts, …");
 assert.equal(vm.runInContext('progressText({ kind: "thinking", step: 2 })', mainScope), "Thinking… (step 2)");
-// The 150ms timer is the scroll spy; a test runs it by hand.
-let spy;
-const cx = { spawn: (f) => f(cx), notify() {}, stop_propagation() {}, focus_handle: () => ({ focus() {} }), timer: { every: (ms, f) => { if (ms === 150) spy = f; }, after: (_ms, f) => timers.push(f) } };
+// The 150ms timer is the scroll spy, the 1.5s ones each pane's poll of a run; a test runs them by hand.
+let spy; const polls = [];
+const cx = { spawn: (f) => f(cx), notify() {}, stop_propagation() {}, focus_handle: () => ({ focus() {} }), timer: { every: (ms, f) => { if (ms === 150) spy = f; if (ms === 1500) polls.push(f); }, after: (_ms, f) => timers.push(f) } };
 // Timers wait until a test runs them.
 const timers = [], tick = () => timers.splice(0).forEach(f => f(cx));
 (async () => {
@@ -146,12 +148,12 @@ const timers = [], tick = () => timers.splice(0).forEach(f => f(cx));
   // A pane wide enough for the sidebar, and a diff for split, as the pane measures them.
   pane.width = 1200; pane.view = 1000;
   await new Promise(setImmediate);
-  // The first read knows no group yet: no rows. Drawing the first group asks for its files' rows, once.
-  assert.deepEqual(plain(bodies.map(b => b.rows)), [[]]);
+  // The first read knows no group yet: it asks for the first group's rows, so drawing that group needs no second read.
+  assert.deepEqual(plain(bodies.map(b => [b.rows, b.firstRows])), [[[], true]]);
   pane.render(cx);
   await new Promise(setImmediate);
   pane.render(cx);
-  assert.deepEqual(plain(bodies.map(b => b.rows)), [[], ["a.ts", "b.png", "c.ts"]]);
+  assert.equal(bodies.length, 1);
   assert.ok(pane.review.files.every(f => f.hunks));
   // Its pane header, and a tab of its own, say what it reviews.
   assert.deepEqual(plain(sharedStore.get("review.titles")), { b: "fix vs origin/main" });
@@ -612,6 +614,22 @@ const timers = [], tick = () => timers.splice(0).forEach(f => f(cx));
   const shownReview = pane.review, shownVersion = pane.version;
   pane.load(cx, true); await settle();
   assert.ok(pane.review === shownReview && pane.version === shownVersion);
+  // While a run goes, the pane asks how it's going, one call at a time, not for the diff; once it ended, the diff is read.
+  let status = { running: true, progress: { kind: "thinking", step: 3 } };
+  mainScope.review = (root, route, body) => route === "/api/review/status" ? (routes.push(route), Promise.resolve(status)) : daemon(root, route, body);
+  pane.review.analysis = { state: "running", agent: true }; routes.length = 0;
+  polls[0](cx); polls[0](cx); await settle();
+  assert.deepEqual(plain(routes), ["/api/review/status"]);
+  assert.equal(pane.review.analysis.progress.step, 3);
+  status = { running: false }; routes.length = 0;
+  polls[0](cx); await settle();
+  assert.deepEqual(plain(routes), ["/api/review/status", "/api/review"]);
+  // A daemon without the route reads the diff, as before.
+  mainScope.review = (root, route, body) => route === "/api/review/status" ? Promise.reject(new Error("Cannot find any route matching")) : daemon(root, route, body);
+  pane.review.analysis = { state: "running", agent: true }; routes.length = 0;
+  polls[0](cx); await settle();
+  assert.deepEqual(plain(routes), ["/api/review"]);
+  mainScope.review = daemon;
   // A read from before a reviewed mark landed doesn't undo it on screen.
   let release;
   mainScope.review = (root, route, body) => route === "/api/review/reviewed" ? new Promise(r => { release = r; }) : daemon(root, route, body);
@@ -684,5 +702,13 @@ const timers = [], tick = () => timers.splice(0).forEach(f => f(cx));
   fresh.init({}, cx); await wait(); fresh.render(cx); await wait(); fresh.load(cx); await wait(); fresh.render(cx);
   assert.equal(sharedStore.get("review.shown").b.commits.length, 2);
   assert.deepEqual(plain(baseReads), [[]], "once, and without rows");
+  // A daemon too old for `firstRows` ignores it: drawing the first group asks for its rows, once.
+  const oldReads = [];
+  const older = new (load("main.js", { ...env, localStorage: { getItem: (k) => k === "handled" ? "99" : null, setItem() {} }, review: async (_root, _route, body) => {
+    oldReads.push(body.rows);
+    return { ...review, files: review.files.map(({ hunks, ...f }) => body.rows.includes(f.path) ? { ...f, hunks } : { ...f }) };
+  } }).Mod)();
+  older.init({}, cx); await wait(); older.render(cx); await wait(); older.render(cx); await wait();
+  assert.deepEqual(plain(oldReads), [[], ["a.ts", "b.png", "c.ts"]]);
   console.log("ok: pairs, items, notes and heights; the pane renders every analysis state, unified and split; rows only for the group shown, kept across polls; groups as tabs or a sidebar, the aside's files following the list, as a tree or a list; the fold menu; analysis settings and auto analyze; reads that don't undo marks or carry over to another diff; no zoom.");
 })();

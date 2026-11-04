@@ -156,7 +156,7 @@ export default class ReviewPane extends View {
     this.scroll = VirtualListScrollHandle.new();
     this.load(cx);
     // While a run goes the pane follows it; otherwise the folder watch and a slow timer catch new diffs.
-    cx.timer.every(1500, (cx) => { if (this.analyzing()) this.load(cx, true); });
+    cx.timer.every(1500, (cx) => { if (this.analyzing()) this.poll(cx); });
     cx.timer.every(15000, (cx) => this.load(cx));
     // Scrolling redraws only the list. What the rest shows of where it is - the aside's group, the files and groups in view,
     // as the app's scroll spy marks them - is checked here and redrawn when it moved.
@@ -190,7 +190,8 @@ export default class ReviewPane extends View {
   }
 
   // Rows come only for the group shown (a large diff's run to megabytes), and none while polling a run:
-  // apply() keeps the rows of files whose sha didn't change.
+  // apply() keeps the rows of files whose sha didn't change. With no group yet, the first group's rows come with the read;
+  // a daemon too old for `firstRows` ignores it, and the group's rows are asked for once it shows.
   // Only the latest read counts: a read of the page being read waits for it (a burst of changes can't restart it forever),
   // a read of another starts at once and the old one's answer is dropped.
   load(cx, poll = false) {
@@ -209,7 +210,7 @@ export default class ReviewPane extends View {
     });
     cx.spawn(async (cx) => {
       try {
-        const r = await review(root, "/api/review", { page, colors: colors(t), rows });
+        const r = await review(root, "/api/review", { page, colors: colors(t), rows, firstRows: !group });
         if (id !== this.loadId) return;
         // Read before a reviewed mark landed, it would undo the mark on screen: the mark's own read follows.
         if (this.marking || marks !== this.marks) return;
@@ -233,6 +234,26 @@ export default class ReviewPane extends View {
           if (this.again) this.load(cx);
         }
       }
+    });
+  }
+
+  // A run's state, without reading the diff: running, it updates in place; ended, or failed anew, the diff is read; not
+  // started yet, nothing. A daemon without the route, or any failure, reads the diff as before. One call at a time.
+  poll(cx) {
+    if (this.polling) return;
+    const { root, page } = this;
+    this.polling = true;
+    cx.spawn(async (cx) => {
+      try {
+        const s = await review(root, "/api/review/status", { page });
+        const a = this.review?.analysis;
+        if (root !== this.root || page !== this.page || !a) return;
+        if (s.running) {
+          this.review.analysis = { ...a, state: "running", progress: s.progress }; this.startingUntil = 0;
+          this.report(); cx.notify();
+        } else if (a.state === "running" || (s.error && s.error !== a.error)) this.load(cx, true);
+      } catch { if (root === this.root && page === this.page) this.load(cx, true); }
+      finally { this.polling = false; }
     });
   }
 
