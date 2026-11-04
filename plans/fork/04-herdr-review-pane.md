@@ -7,8 +7,9 @@ flagged "changed since reviewed" after an edit; a real `pi` analysis of a commit
 going `none`, `running`, `current`. Not checked: analyses with children groups, a run that
 fails in the pane. Fork-only, like [plan 01](./01-multi-repo-entry.md) to
 [plan 03](./03-daemon-settings.md); builds on their daemon, settings and daemon-started
-analyses. The pane itself is a Herdr mod in `herdr-t3` (branch `pulls-review`); this
-plan pins the daemon side and the contract the mod draws from.
+analyses. The pane and the Review bar that opens it are Herdr mods in this repo's `mods/`
+([mods/README.md](../../mods/README.md)); this plan pins the daemon side and the contract the
+pane draws from.
 
 ## Problem
 
