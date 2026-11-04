@@ -34,7 +34,7 @@ function fire(node, event, ...args) {
 const plain = (value) => JSON.parse(JSON.stringify(value));
 
 const zoom = 1.1, calls = [], overlays = [], closed = [], notes = [], state = {}, shown = { pane: "p1", tab: "b" };
-const theme = new Proxy({ foreground: "#f4f4f6", dim: "#77777f", border: "#2a2a30", hover: "#202024" }, { get: (t, k) => t[k] ?? "#a9a9b4" });
+const theme = new Proxy({ foreground: "#f4f4f6", dim: "#77777f", border: "#2a2a30", hover: "#202024", ansi1: "#e06c75", ansi2: "#98c379", ansi3: "#c8a84b", ansi4: "#5f8fe0", ansi9: "#f08c95", ansi10: "#b5e09a", ansi11: "#e8cf7a", ansi12: "#8fb4f2" }, { get: (t, k) => t[k] ?? "#a9a9b4" });
 const env = {
   View: class {}, div: () => element(), h_flex: () => element("h"), v_flex: () => element("v"),
   svg: (source) => element("svg", source), Input: { new: () => element("input") },
@@ -88,7 +88,17 @@ const load = (props = {}, setup) => {
   fire(find(drawn, "review-pick"), "on_hover", true, cx);
   assert.equal(find(bar.render(), "review-pick").style.text_color, theme.foreground, "the branch icon brightens");
   fire(find(drawn, "review-pick"), "on_hover", false, cx);
-  for (const id of ["review-open", "review-changes", "review-ahead", "review-behind"]) assert.equal(find(drawn, id).items[0].style.text_color, undefined, "a count has no color of its own: Herdr's colors mean an agent's status");
+  // Each count in its own color, so what there is to review reads at a glance; hovered, its bright twin.
+  const countColor = id => find(bar.render(), id).items[0].style.text_color;
+  assert.deepEqual(["review-open", "review-changes", "review-ahead", "review-behind"].map(countColor), [theme.ansi4, theme.ansi3, theme.ansi2, theme.ansi1]);
+  fire(find(drawn, "review-open"), "on_hover", true, cx);
+  assert.equal(countColor("review-open"), theme.ansi12, "hovered, the count takes its bright twin");
+  fire(find(drawn, "review-changes"), "on_hover", true, cx);
+  fire(find(drawn, "review-open"), "on_hover", false, cx);
+  assert.equal(countColor("review-changes"), theme.ansi11, "the old segment's late leave doesn't clear the new one");
+  assert.equal(countColor("review-open"), theme.ansi4);
+  fire(find(drawn, "review-changes"), "on_hover", false, cx);
+  assert.equal(countColor("review-changes"), theme.ansi3);
   assert.equal(find(drawn, "review-ahead").style.accessibility_label, "Review 2 commits to push: on feat, not on origin/feat", "the label says what a count compares");
   assert.equal(find(drawn, "review-behind").style.accessibility_label, "Review 1 commit to pull: on origin/feat as of your last fetch, not on feat");
   assert.equal(walk(drawn).filter(n => "tooltip" in n.style).length, 0, "no hover tooltips");

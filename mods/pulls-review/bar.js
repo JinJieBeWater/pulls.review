@@ -169,19 +169,22 @@ export function reviewBar(view, t, stop) {
   if (!r) return null;
   const n = (count, noun) => `${count} ${noun}${count === 1 ? "" : "s"}`;
   // The accessibility label says what each count compares, which the short label can't.
-  // The count leads by weight, not color: in this layout color means an agent's status, the one thing asking for you.
-  const item = (id, count, noun, name, args) => h_flex().id(id).h_full().px(8).gap(6).flex_none().items_center()
+  // The count carries the color; what it counts stays quiet beside it.
+  const item = (id, count, noun, ansi, name, args) => h_flex().id(id).h_full().px(8).gap(6).flex_none().items_center()
     .text_size(12).text_color(t.dim).hover(s => s.bg(t.hover).text_color(t.foreground)).role("button").accessibility_label(name)
+    // Herdr has no group hover. Entering the next segment can report before leaving this one.
+    .on_hover((on, cx) => { if (on) view.reviewHover = id; else if (view.reviewHover === id) view.reviewHover = null; cx.notify(); })
     .on_click(() => openDiff(r.root, args, true))
-    .child(div().font_medium().child(count))
+    // Hovered, the label turns foreground: the count takes its bright twin (ansi + 8) to stay the lead, same hue.
+    .child(div().font_medium().text_color(t[`ansi${view.reviewHover === id ? ansi + 8 : ansi}`]).child(count))
     .when(Boolean(noun), el => el.child(noun));
   const segments = [
     // A squash merge leaves the count standing, so a deleted upstream is the visible hint it may be done.
-    r.unmerged > 0 && item("review-open", String(r.unmerged), `ahead of ${r.base}${r.gone ? " · merged?" : ""}`, `Review the branch: ${n(r.unmerged, "commit")} on ${r.branch}, not on ${r.baseRef}`
+    r.unmerged > 0 && item("review-open", String(r.unmerged), `ahead of ${r.base}${r.gone ? " · merged?" : ""}`, 4, `Review the branch: ${n(r.unmerged, "commit")} on ${r.branch}, not on ${r.baseRef}`
       + (r.newer ? ` · ${r.baseRef} has ${n(r.newer, "newer commit")}` : "") + (r.gone ? ` · ${r.upstream} is gone, likely merged` : ""), []),
-    r.changed > 0 && item("review-changes", String(r.changed), "uncommitted", `Review ${n(r.changed, "uncommitted file")}: staged, unstaged and new`, ["--worktree"]),
-    r.ahead > 0 && item("review-ahead", `↑${r.ahead}`, null, `Review ${n(r.ahead, "commit")} to push: on ${r.branch}, not on ${r.upstream}`, [`${r.upstream}...${r.branch}`]),
-    r.behind > 0 && item("review-behind", `↓${r.behind}`, null, `Review ${n(r.behind, "commit")} to pull: on ${r.upstream} as of your last fetch, not on ${r.branch}`, [`${r.branch}...${r.upstream}`]),
+    r.changed > 0 && item("review-changes", String(r.changed), "uncommitted", 3, `Review ${n(r.changed, "uncommitted file")}: staged, unstaged and new`, ["--worktree"]),
+    r.ahead > 0 && item("review-ahead", `↑${r.ahead}`, null, 2, `Review ${n(r.ahead, "commit")} to push: on ${r.branch}, not on ${r.upstream}`, [`${r.upstream}...${r.branch}`]),
+    r.behind > 0 && item("review-behind", `↓${r.behind}`, null, 1, `Review ${n(r.behind, "commit")} to pull: on ${r.upstream} as of your last fetch, not on ${r.branch}`, [`${r.branch}...${r.upstream}`]),
   ].filter(Boolean);
   segments.at(-1)?.rounded_r(6);
   // Outlined, not filled: a fill would read as an active tab. Each part's fill runs to the outline and the rules.
