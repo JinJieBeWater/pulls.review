@@ -150,7 +150,7 @@ const timers = [], tick = () => timers.splice(0).forEach(f => f(cx));
   assert.deepEqual(plain(bodies.map(b => b.rows)), [[], ["a.ts", "b.png", "c.ts"]]);
   assert.ok(pane.review.files.every(f => f.hunks));
   // Its pane header, and a tab of its own, say what it reviews.
-  assert.deepEqual(plain(sharedStore.get("review.titles")), { b: "review · fix vs origin/main" });
+  assert.deepEqual(plain(sharedStore.get("review.titles")), { b: "fix vs origin/main" });
   // The Review bar reads which repository it shows from here; no change, no write: every write redraws every mod.
   assert.equal(sharedStore.get("review.shown").b.root, "/repo");
   const published = sharedStore.get("review.shown"); pane.render(cx);
@@ -487,7 +487,7 @@ const timers = [], tick = () => timers.splice(0).forEach(f => f(cx));
   assert.equal(pane.popup, null);
   // The pane's own header names the diff, not the repo; this one counts reviewed files beside a donut.
   pane.render(cx);
-  assert.equal(sharedStore.get("review.titles").b, "review · fix vs origin/main");
+  assert.equal(sharedStore.get("review.titles").b, "fix vs origin/main");
   assert.equal(pane.head().parts.find(p => p.donut !== undefined).text, `${pane.review.files.filter(f => f.reviewed).length}/${pane.review.files.length}`);
   assert.ok(pane.head().buttons.find(b => b.id === "analyze").icon);
   // Wide again, the sidebar instead of the tabs.

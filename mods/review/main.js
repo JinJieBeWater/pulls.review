@@ -648,7 +648,7 @@ export default class ReviewPane extends View {
     }
     // The name pane headers and tabs give this pane (t3's name.js), rather than the folder's; here, not in init, which a reload skips.
     // A tab of its own, unnamed, reads as this pane too (t3-tabs). Tabs without a review pane drop out.
-    const title = this.page ? `review · ${pageLabel(this.page, this.review)}` : "review";
+    const title = this.page ? pageLabel(this.page, this.review) : "review";
     const live = Object.fromEntries(Object.entries(titles).filter(([tab]) => mine.some(p => p.tab === tab)));
     if (mine.some(p => p.tab === this.tab) && (titles[this.tab] !== title || Object.keys(live).length !== Object.keys(titles).length)) setShared(`${PANE}.titles`, { ...live, [this.tab]: title });
     // Its icon in pane headers and tabs (t3's name.js): pulls.review's own logo.
