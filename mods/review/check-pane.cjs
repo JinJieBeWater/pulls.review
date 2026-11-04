@@ -649,5 +649,16 @@ const timers = [], tick = () => timers.splice(0).forEach(f => f(cx));
   pane.open(there, cx); await wait(); await drawAll();
   const inGroup = groupFiles(pane.group()).map(path => pane.review.files.find(f => f.path === path)).filter(Boolean);
   assert.ok(inGroup.length > 0 && inGroup.every(f => f.hunks), "rows on coming back");
+  // Reopened on one commit's page, which lists only itself: the bar's list is read from its base, once.
+  const reopened = new Map([["tab", "b"], ["root", "/repo"], ["page", "/commit/c2"], ["base", "/branch/fix"], ["handled", "99"]]);
+  const baseReads = [];
+  const fresh = new (load("main.js", { ...env, localStorage: { getItem: (k) => reopened.get(k) ?? null, setItem: (k, v) => reopened.set(k, v) },
+    review: async (_root, _route, body) => {
+      if (body.page === "/branch/fix") baseReads.push(body.rows);
+      return { ...review, files: [], commits: body.page === "/branch/fix" ? review.commits : [review.commits[1]] };
+    } }).Mod)();
+  fresh.init({}, cx); await wait(); fresh.render(cx); await wait(); fresh.load(cx); await wait(); fresh.render(cx);
+  assert.equal(sharedStore.get("review.shown").b.commits.length, 2);
+  assert.deepEqual(plain(baseReads), [[]], "once, and without rows");
   console.log("ok: pairs, items, notes and heights; the pane renders every analysis state, unified and split; rows only for the group shown, kept across polls; groups as tabs or a sidebar, the aside's files following the list, as a tree or a list; the fold menu; analysis settings and auto analyze; reads that don't undo marks or carry over to another diff; no zoom.");
 })();

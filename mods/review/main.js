@@ -207,6 +207,7 @@ export default class ReviewPane extends View {
         this.apply(r);
         this.error = null;
         this.watch(cx);
+        this.loadBase(cx);
         // Opening a page with no analysis starts one, once per head. An outdated one waits for Re-analyze:
         // every commit on the branch would otherwise start another run.
         const a = r.analysis, once = `${page}@${r.head?.sha}`;
@@ -240,6 +241,18 @@ export default class ReviewPane extends View {
     if (this.page === this.base) this.baseCommits = r.commits;
     if (!r.groups.some(g => g.key === this.groupKey)) this.groupKey = r.groups[0]?.key ?? null;
     this.version++;
+  }
+
+  // Reopened on one commit's page, which lists only itself: the diff's commits come from its base, read once without rows.
+  // A failed read leaves the commit alone in the bar's list.
+  loadBase(cx) {
+    const { root, base } = this, key = `${root}\n${base}`;
+    if (this.page === base || this.baseCommits || this.baseAsked === key) return;
+    this.baseAsked = key;
+    cx.spawn(async (cx) => {
+      const r = await review(root, "/api/review", { page: base, colors: colors(theme()), rows: [] }).catch(() => null);
+      if (r && root === this.root && base === this.base && !this.baseCommits) { this.baseCommits = r.commits; cx.notify(); }
+    });
   }
 
   analyze(cx, force) {
