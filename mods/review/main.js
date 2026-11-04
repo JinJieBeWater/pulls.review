@@ -179,11 +179,15 @@ export default class ReviewPane extends View {
 
   open(page, cx) {
     if (page === this.page) return;
-    this.page = page; this.review = null; this.error = null; this.analyzeError = null; this.startingUntil = 0; this.full.clear(); this.asked.clear(); this.groupKey = null; this.current = null; this.headerHidden = false;
+    // The old page stays on screen, dimmed and inert, until the new one's read replaces it: apply() then resets what belonged to it.
+    this.page = page; this.switching = Boolean(this.review); this.error = null; this.analyzeError = null; this.startingUntil = 0; this.asked.clear(); this.headerHidden = false;
     this.wasRunning = false; this.news = null;
     this.remember(); this.version++;
     this.load(cx);
   }
+
+  // No review shown, or none yet: what belonged to the last one goes with it.
+  forget() { this.review = null; this.switching = false; this.groupKey = null; this.current = null; this.full.clear(); }
 
   watch(cx) {
     const root = this.root;
@@ -214,7 +218,8 @@ export default class ReviewPane extends View {
   load(cx, poll = false) {
     if (!this.root || !this.page) return;
     if (this.loading?.root === this.root && this.loading.page === this.page) { this.again = true; return; }
-    const { root, page } = this, t = theme(), group = this.group(), marks = this.marks, id = ++this.loadId;
+    // Switching, the group shown is the old page's: the new page's first group comes with the read instead.
+    const { root, page } = this, t = theme(), group = this.switching ? null : this.group(), marks = this.marks, id = ++this.loadId;
     this.loading = { root, page }; this.again = false; this.dirty = false;
     // Rows only for the group's files that have none: apply() keeps the rest, and each asked-for file is highlighted anew.
     const rows = poll || !group ? [] : groupFiles(group).filter(path => this.review.files.some(f => f.path === path && !f.hunks));
@@ -223,6 +228,8 @@ export default class ReviewPane extends View {
     cx.timer.after(LOAD_TIMEOUT, (cx) => {
       if (id !== this.loadId || !this.loading) return;
       this.loading = null; this.error = `jin.review didn't answer in ${LOAD_TIMEOUT / 1000} s`;
+      // Not under the new page's title.
+      if (this.switching) this.forget();
       cx.notify();
     });
     cx.spawn(async (cx) => {
@@ -242,7 +249,7 @@ export default class ReviewPane extends View {
           this.auto.add(once);
           this.analyze(cx, false);
         }
-      } catch (e) { if (id === this.loadId) this.error = e?.message ?? String(e); }
+      } catch (e) { if (id === this.loadId) { this.error = e?.message ?? String(e); if (this.switching) this.forget(); } }
       finally {
         if (id === this.loadId) {
           this.loading = null;
@@ -264,7 +271,7 @@ export default class ReviewPane extends View {
       try {
         const s = await review(root, "/api/review/status", { page });
         const a = this.review?.analysis;
-        if (root !== this.root || page !== this.page || !a) return;
+        if (root !== this.root || page !== this.page || !a || this.switching) return;
         if (s.running) {
           this.review.analysis = { ...a, state: "running", progress: s.progress }; this.startingUntil = 0;
           this.report(); cx.notify();
@@ -286,14 +293,18 @@ export default class ReviewPane extends View {
     // A read that says what the one shown does changes nothing: the list isn't rebuilt, and its files stay the ones marks change.
     const said = (x) => JSON.stringify([x.key, x.title, x.base, x.head, x.commits, x.source, x.groups, x.analysis,
       x.files.map(f => [f.path, f.sha, f.reviewed, f.changed, Boolean(f.hunks)])]);
-    if (this.review && said(r) === said(this.review)) return;
+    if (this.review && !this.switching && said(r) === said(this.review)) return;
     for (const path of this.full.keys()) if (old.get(path)?.sha !== r.files.find(file => file.path === path)?.sha) this.full.delete(path);
+    const switched = this.switching;
+    if (switched) { this.forget(); this.scrolledDownBy = 0; this.settling = null; }
     this.review = r;
     if (r.analysis.state === "running") this.startingUntil = 0;
     // The diff's commits, for stepping through them while one is shown on its own (its page lists only itself).
     if (this.page === this.base) this.baseCommits = r.commits;
     if (!r.groups.some(g => g.key === this.groupKey)) this.groupKey = r.groups[0]?.key ?? null;
     this.version++;
+    // The old page's list was kept on screen, scrolled: the new one starts at its top.
+    if (switched) this.scroll.scroll_to_item(0);
   }
 
   // Reopened on one commit's page, which lists only itself: the diff's commits come from its base, read once without rows.
@@ -323,13 +334,13 @@ export default class ReviewPane extends View {
   }
 
   // A run going, as the app's from the click: the daemon answers before the worktree server has started it, and a read until then finds none.
-  analyzing() { return this.review?.analysis.state === "running" || Date.now() < this.startingUntil; }
+  analyzing() { return (!this.switching && this.review?.analysis.state === "running") || Date.now() < this.startingUntil; }
 
   // What its tab and pane header show (t3's name.js), as the word an agent would report: a run going, then how it ended
   // until the tab is looked at. In the pane, the button keeps a failure.
   // shortcut: shared outlives the app and a pane starts only when shown, so after a restart a tab not yet shown can keep its spinner until it is; a heartbeat would fix it.
   report() {
-    const a = this.review?.analysis, real = a?.state === "running", mine = panes().filter(p => p.mod === PANE);
+    const a = this.switching ? null : this.review?.analysis, real = a?.state === "running", mine = panes().filter(p => p.mod === PANE);
     if (!mine.some(p => p.tab === this.tab)) return;
     if (this.wasRunning && !real) this.news = this.analyzeError ?? a?.error ? "blocked" : "done";
     this.wasRunning = real;
@@ -347,7 +358,7 @@ export default class ReviewPane extends View {
     const mine = panes().filter(p => p.mod === PANE), all = shared(`${PANE}.shown`) ?? {}, now = all[this.tab];
     if (!mine.some(p => p.tab === this.tab)) return;
     // The diff's commits, oldest first: on one commit's page, still its base's.
-    const commits = this.baseCommits ?? this.review?.commits ?? [];
+    const commits = this.baseCommits ?? (this.switching ? null : this.review?.commits) ?? [];
     const live = Object.entries(all).filter(([tab]) => tab !== this.tab && mine.some(p => p.tab === tab));
     // As report(): only a change, and tabs without a review pane drop out.
     if (now?.root === this.root && now.page === this.page && now.base === this.base && now.commits?.length === commits.length
@@ -571,6 +582,7 @@ export default class ReviewPane extends View {
 
   // One file, or a folder's files at once. As the app's, marking folds the file and unmarking opens it again.
   setReviewed(files, reviewed, cx) {
+    if (this.switching) return;
     files = [files].flat();
     for (const file of files) {
       file.reviewed = reviewed; file.changed = false;
@@ -592,7 +604,7 @@ export default class ReviewPane extends View {
   canFull(file) { return file.status !== "removed" && !file.isBinary; }
 
   toggleFull(file, cx) {
-    if (!this.canFull(file)) return;
+    if (this.switching || !this.canFull(file)) return;
     // As the app's button, disabled while the file loads: a click would cancel it, and its answer would open it again.
     if (this.full.has(file.path) && !this.full.get(file.path)) return;
     if (this.full.has(file.path)) { this.full.delete(file.path); this.version++; cx.notify(); return; }
@@ -616,6 +628,7 @@ export default class ReviewPane extends View {
   // A press on a file's header, placed by x as item() lays the header out: the reviewed box at the start (12px in,
   // 14 wide), the fold and the whole-file slots at the end (24 wide each, 4 apart, 12px in). Anywhere else folds, as the app's.
   headerPress(file, x, cx) {
+    if (this.switching) return;
     const fromEnd = this.view - x;
     if (x < 34) return this.setReviewed(file, !file.reviewed, cx);
     if (fromEnd > 36 && fromEnd <= 64 && this.canFull(file)) return this.toggleFull(file, cx);
@@ -714,7 +727,7 @@ export default class ReviewPane extends View {
     }
     // The name pane headers and tabs give this pane (t3's name.js), rather than the folder's; here, not in init, which a reload skips.
     // A tab of its own, unnamed, reads as this pane too (t3-tabs). Tabs without a review pane drop out.
-    const title = this.page ? pageLabel(this.page, this.review) : "review";
+    const title = this.page ? pageLabel(this.page, this.switching ? null : this.review) : "review";
     const live = Object.fromEntries(Object.entries(titles).filter(([tab]) => mine.some(p => p.tab === tab)));
     if (mine.some(p => p.tab === this.tab) && (titles[this.tab] !== title || Object.keys(live).length !== Object.keys(titles).length)) setShared(`${PANE}.titles`, { ...live, [this.tab]: title });
     // Its icon in pane headers and tabs (t3's name.js): pulls.review's own logo.
@@ -724,7 +737,7 @@ export default class ReviewPane extends View {
     const request = shared(PANE);
     if (request && request.tab === this.tab && request.n > this.handled) {
       this.handled = request.n;
-      if (request.root !== this.root) { this.root = request.root; this.watching = null; this.seen.clear(); this.collapsed.clear(); this.page = null; }
+      if (request.root !== this.root) { this.root = request.root; this.watching = null; this.seen.clear(); this.collapsed.clear(); this.page = null; this.forget(); }
       // With a base, the Review bar picking another page of the same diff: its commits stay.
       this.base = request.base ?? request.page;
       if (!request.base) this.baseCommits = null;
@@ -738,7 +751,7 @@ export default class ReviewPane extends View {
       this.load(cx);
     }
     // The group shown has files without rows (just opened, or changed since): ask for them, once per version.
-    const missing = this.group() && groupFiles(this.group()).map(path => this.review.files.find(f => f.path === path)).filter(f => f && !f.hunks && !this.asked.has(f.sha));
+    const missing = !this.switching && this.group() && groupFiles(this.group()).map(path => this.review.files.find(f => f.path === path)).filter(f => f && !f.hunks && !this.asked.has(f.sha));
     if (missing?.length && !this.loading) this.load(cx);
     const wide = this.width >= WIDE, sidebar = this.sidebarShown(), group = this.group();
     // A group newly shown, however it came to be, opens its subgroups; its tab's caret folds them.
@@ -768,7 +781,7 @@ export default class ReviewPane extends View {
       .when(Boolean(this.error), el => el.child(h_flex().flex_none().px(12).py(6).gap(8).bg(t.ansi1 + "18").text_color(t.ansi1).text_size(12)
         .child(div().flex_1().min_w(0).child(this.error))
         .child(this.button(t, "retry", "Retry", () => this.load(cx)))))
-      .child(!this.review
+      .child((!this.review
         // As the app's FeedbackLoading.
         ? div().flex_1().py(48).when(!this.error, el => el.child(h_flex().gap(8).items_center().justify_center().text_color(t.dim).role("status")
           .child(svg(`${PH}/spinner-duotone.svg`).size(14).flex_none().spin(900)).child("Loading the review…")))
@@ -777,14 +790,14 @@ export default class ReviewPane extends View {
         : sidebar ? h_resizable("review-sidebar-width").flex_1().min_h(0)
           .child(resizable_panel().size(256).size_range(192, Math.max(192, Math.round(this.width * 0.4))).child(this.sidebar(t)))
           .child(resizable_panel().child(column()))
-        : div().flex_1().min_h(0).child(column()))
+        : div().flex_1().min_h(0).child(column())).when(Boolean(this.switching), el => el.opacity(DISABLED)))
       // Built only while open: render runs on every live change, and a catalog runs to hundreds of rows.
       .when(this.popup === "settings", el => el.child(div().absolute().top(44).right(8).child(this.settingsPanel(t))))
       // Under its button, the one left of the gear.
-      .when(this.popup === "fold" && Boolean(this.review) && !hidden, el => el.child(div().absolute().top(44).right(44).child(this.foldMenu(t))))
+      .when(this.popup === "fold" && Boolean(this.review) && !this.switching && !hidden, el => el.child(div().absolute().top(44).right(44).child(this.foldMenu(t))))
       // Under its button: right of it the fold menu's and the gear (24px each, 8px apart, 12px in), and the newer-commit
       // arrow while one commit is shown.
-      .when(this.popup === "status" && Boolean(this.review) && (this.analysisStatus().running || Boolean(this.analysisStatus().error)), el => el.child(div().absolute().top(44).right(8).child(this.statusPanel(t))));
+      .when(this.popup === "status" && Boolean(this.review) && !this.switching && (this.analysisStatus().running || Boolean(this.analysisStatus().error)), el => el.child(div().absolute().top(44).right(8).child(this.statusPanel(t))));
   }
 
   // Split as chosen, where the diff is wide enough for two sides; narrower it's unified, the choice kept.
@@ -821,6 +834,8 @@ export default class ReviewPane extends View {
       s: () => this.toggleSplit(cx),
     };
     const action = actions[e.keystroke];
+    // Switching, the list is the old page's: only Escape works.
+    if (this.switching && e.keystroke !== "escape") return;
     if (action) { action(); cx.stop_propagation(); }
   }
 
@@ -850,7 +865,8 @@ export default class ReviewPane extends View {
 
   // What the header shows: a title, the page, colored parts (theme color names) and buttons.
   head() {
-    const r = this.review, parts = [], buttons = [];
+    // Switching, the old page's counts and analysis aren't the new one's.
+    const r = this.switching ? null : this.review, parts = [], buttons = [];
     if (r) {
       const files = r.files, done = files.filter(f => f.reviewed).length;
       parts.push({ text: `+${files.reduce((n, f) => n + f.additions, 0)}`, color: "ansi2" }, { text: `−${files.reduce((n, f) => n + f.deletions, 0)}`, color: "ansi1" },

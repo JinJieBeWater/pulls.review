@@ -745,5 +745,30 @@ const timers = [], tick = () => timers.splice(0).forEach(f => f(cx));
   assert.equal(await changed(["/repo/node_modules/x"]), 0);
   assert.equal(await changed(["/repo/node_modules/x", "/repo/a.ts"]), 1);
   assert.equal(await changed(["/repo/.git/refs/heads/fix"]), 1);
+  // Switching page keeps the old one on screen, dimmed and inert, until the new one's read replaces it, which starts at
+  // its top. Meanwhile the read asks for the new page's first group, and the title and header don't read the old review.
+  let next;
+  mainScope.review = (root, route, body) => route === "/api/review" ? (bodies.push(body), new Promise(r => { next = r; })) : daemon(root, route, body);
+  shownTab = "b"; pane.width = 1200; await drawAll();
+  const old = pane.review, marked = pane.marks, split = pane.split;
+  pane.current = old.files[0].path; pane.full.clear(); calls.length = 0;
+  pane.open("/commit/c2", cx);
+  assert.ok(pane.review === old && pane.switching);
+  assert.deepEqual(plain(bodies.at(-1)).rows, []);
+  assert.equal(bodies.at(-1).firstRows, true);
+  drawn.clear(); pane.render(cx);
+  assert.ok(drawn.has("review-diff-area") && drawn.has("settings") && !drawn.has("analyze"), "the old list, without its counts and analysis");
+  assert.equal(sharedStore.get("review.titles").b, "c2");
+  pane.setReviewed(old.files[0], !old.files[0].reviewed, cx); pane.toggleFull(old.files[0], cx); pane.headerPress(old.files[0], 0, cx);
+  pane.key({ keystroke: "s" }, cx); pane.key({ keystroke: "j" }, cx);
+  assert.ok(pane.marks === marked && !pane.full.size && pane.split === split && pane.current === old.files[0].path, "inert");
+  next({ ...review, title: "two" }); await wait();
+  assert.ok(!pane.switching && pane.review.title === "two" && pane.current === null);
+  assert.deepEqual(plain(calls.filter(([name]) => name === "scroll")), [["scroll", 0]]);
+  // A failed read clears the old review rather than show it under the new page's title.
+  mainScope.review = (root, route, body) => route === "/api/review" ? Promise.reject(new Error("gone")) : daemon(root, route, body);
+  pane.open("/commit/c1", cx); await wait();
+  assert.ok(pane.review === null && pane.error === "gone" && !pane.switching);
+  mainScope.review = daemon;
   console.log("ok: pairs, items, notes and heights; the pane renders every analysis state, unified and split; rows only for the group shown, kept across polls; groups as tabs or a sidebar, the aside's files following the list, as a tree or a list; the fold menu; analysis settings and auto analyze; reads that don't undo marks or carry over to another diff; no zoom.");
 })();
