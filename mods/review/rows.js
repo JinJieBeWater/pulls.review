@@ -30,6 +30,9 @@ export function pageLabel(page, review) {
   if (kind === "worktree") return "Uncommitted changes";
   if (kind === "branch") return `${value} vs ${review?.base?.ref ?? "base"}`;
   if (kind === "commit") return review?.title || value.slice(0, 7);
+  // A range as the Review bar names it: a branch against its upstream is what there is to push or pull.
+  const [from, to] = value.split("...");
+  if (kind === "compare" && to) return to.endsWith(`/${from}`) ? `To pull: ${from}` : from.endsWith(`/${to}`) ? `To push: ${to}` : `${to} vs ${from}`;
   return value;
 }
 

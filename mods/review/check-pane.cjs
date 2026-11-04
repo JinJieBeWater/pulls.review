@@ -61,6 +61,10 @@ assert.deepEqual(soloItems.map(item => item.kind), ["file", "solo", "solo"]);
 assert.equal(contentWidth([{ kind: "solo", line: { tokens: [["a".repeat(100)]] } }, ...sides], "solo"), Math.ceil(52 + 100 * 7.25 + 16));
 assert.equal(pageLabel("/branch/fix%2Fa", review), "fix/a vs origin/main");
 assert.equal(pageLabel("/worktree", review), "Uncommitted changes");
+// A range reads as what the Review bar calls it: to push, to pull, or a branch against what it's compared to.
+assert.equal(pageLabel("/compare/origin/fix...fix", review), "To push: fix");
+assert.equal(pageLabel("/compare/fix...origin/fix", review), "To pull: fix");
+assert.equal(pageLabel("/compare/origin/main...other", review), "other vs origin/main");
 
 // main.js: every state's render and every item kind, without a window.
 // Elements record their ids and handlers (`id.on_name`), so a test can press one and see what the next render draws.
