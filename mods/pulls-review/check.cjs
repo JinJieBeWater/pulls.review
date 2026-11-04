@@ -37,7 +37,7 @@ const zoom = 1.1, calls = [], overlays = [], closed = [], notes = [], state = {}
 const theme = new Proxy({ foreground: "#f4f4f6", dim: "#77777f", border: "#2a2a30", hover: "#202024", ansi1: "#e06c75", ansi2: "#98c379", ansi3: "#c8a84b", ansi4: "#5f8fe0", ansi9: "#f08c95", ansi10: "#b5e09a", ansi11: "#e8cf7a", ansi12: "#8fb4f2" }, { get: (t, k) => t[k] ?? "#a9a9b4" });
 const env = {
   View: class {}, div: () => element(), h_flex: () => element("h"), v_flex: () => element("v"),
-  svg: (source) => element("svg", source), Input: { new: () => element("input") }, HoverCard: { new: (id) => element("hovercard").id(id) },
+  svg: (source) => element("svg", source), image: (source) => element("image", source), Input: { new: () => element("input") }, HoverCard: { new: (id) => element("hovercard").id(id) },
   InputState: { new: () => ({ on() {}, value: () => "", focus() {} }) },
   theme: () => theme, settings: () => ({ zoom }), window: () => ({ platform: "macos", active: true }),
   spaces: () => [{ id: "s", active: true, folder: "/space", tabs: [{ id: "b" }] }], panes: () => [{ pane: "p1", tab: "b", cwd: "/repo/src" }],
@@ -86,8 +86,12 @@ const load = (props = {}, setup) => {
   assert.ok("rounded_r" in find(drawn, "review-behind").style, "the last part's fill follows the outline's corner");
   assert.equal(find(drawn, "review-open").style.accessibility_label, "Review the branch: 4 commits on feat, not on main");
   for (const n of walk(drawn)) if (n.hoverStyle.text_color) assert.ok(!walk(n).some(c => c.kind === "svg"), `${n.key}: a hover style can't brighten its icon`);
+  // The logo, in its own colors and on disk: a missing file draws nothing, and the button shows blank.
+  const logo = walk(find(drawn, "review-pick")).find(n => n.kind === "image");
+  assert.equal(logo.source, "mods/pulls-review/logo.svg");
+  assert.ok(fs.existsSync(path.join(__dirname, "logo.svg")));
   fire(find(drawn, "review-pick"), "on_hover", true, cx);
-  assert.equal(find(bar.render(), "review-pick").style.text_color, theme.foreground, "the branch icon brightens");
+  assert.deepEqual(strings(find(bar.render(), "tip-review-pick").style.content), ["Pick a commit or branch to review"], "its card shows on hover");
   fire(find(drawn, "review-pick"), "on_hover", false, cx);
   // Each count in its own color, so what there is to review reads at a glance; hovered, its bright twin.
   const countColor = id => find(bar.render(), id).items[0].style.text_color;
@@ -162,7 +166,7 @@ const load = (props = {}, setup) => {
   fire(find(loose.render(), "review-fit"), "on_size_change", { width: 220 });
   assert.equal(calls.length, 0, "without a block it leaves the layout alone");
 
-  // The branch icon reads on click, then its menu's rows open one commit, or one branch against the base.
+  // The logo reads on click, then its menu's rows open one commit, or one branch against the base.
   const ranges = [];
   scope.exec = async (_command, args) => {
     if (args.includes("log")) { ranges.push(args.at(-1)); return { code: 0, stdout: "abcdef123456\x1ffix: a\x1f2 hours ago\n" }; }

@@ -1,5 +1,5 @@
 // pulls.review in Herdr. In a bar it is the Review bar (bar.js), sized to fit its block; opened as an overlay it opens a
-// review (open.js), or with props.menu the branch icon's menu. A review in "herdr" mode draws in the review mod's pane.
+// review (open.js), or with props.menu the logo's menu. A review in "herdr" mode draws in the review mod's pane.
 // Bound in keys.json, `mod.open:pulls-review` reviews the focused pane's worktree.
 
 import { View, div } from "gpui-kit";

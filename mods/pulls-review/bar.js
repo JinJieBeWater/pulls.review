@@ -1,22 +1,21 @@
 // The Review bar: the focused worktree's uncommitted files and its commits ahead of and behind
 // its upstream, each opening that diff.
-// Its branch icon lists what else there is to pick: a commit, or another branch.
+// Its logo lists what else there is to pick: a commit, or another branch.
 // The counts read the remote-tracking refs as they are; fetching is left to you.
 
-import { div, svg } from "gpui-kit";
+import { div, svg, image } from "gpui-kit";
 import { h_flex, v_flex, InputState, Input, HoverCard } from "gpui-base";
 import { spaces, panes, focused, exec, watchFolder, window, openOverlay, closeOverlay, props, shared, theme, settings } from "herdr";
 
 const MOD = "pulls-review";
 
-// A button's icon and text brighten together: a hover style reaches the text but not the svg, so it's state.
+// The hovered button, as state: its hover label reads it.
 const glow = (view, id) => (on, cx) => {
   if (on) view.hot = id;
   else if (view.hot === id) view.hot = null;
   cx.notify();
 };
-const lit = (view, id, color = theme().dim) => (view.hot === id ? theme().foreground : color);
-// A hover label as Herdr T3's: `.tooltip()` takes only a string, in the shell's own style. Only while lit: a menu
+// A hover label as Herdr T3's: `.tooltip()` takes only a string, in the shell's own style. Only while hovered: a menu
 // opened from the button hides the pointer's leaving, and the card would stay up over it.
 const tip = (hot, t, id, label, trigger) => HoverCard.new(`tip-${id}`).anchor("top_center").open_delay(150).close_delay(0).trigger(trigger)
   .content(hot !== id ? div() : div().mt(4).px(8).py(4).rounded(6).border(1).border_color(t.border).bg(t.chrome).shadow_md().text_size(12).text_color(t.foreground).child(label));
@@ -145,7 +144,7 @@ export function initReviewMenu(view) {
   view.search.focus();
 }
 
-// The branch icon's menu, this mod opened as an overlay with props.menu (main.js).
+// The logo's menu, this mod opened as an overlay with props.menu (main.js).
 export function reviewMenu(view) {
   const t = theme(), { base, height } = props(), { commits, branches } = reviewMatches(view);
   const title = (text) => div().h(24).px(8).flex_none().flex().items_center().text_size(11).text_color(t.dim).child(text);
@@ -198,7 +197,7 @@ export function reviewBar(view, t, stop) {
   // Outlined, not filled: a fill would read as an active tab. Each part's fill runs to the outline and the rules.
   return h_flex().id("pulls-review").h(26).flex_none().items_center().rounded(6).border(1).border_color(t.border).on_mouse_down("left", stop)
     // Stays with no counts: on a clean default branch it's the only way in.
-    .child(tip(view.hot, t, "review-pick", "Pick a commit or branch to review", h_flex().id("review-pick").h(24).px(5).flex_none().items_center().rounded_l(6).when(!segments.length, el => el.rounded_r(6)).text_color(lit(view, "review-pick"))
+    .child(tip(view.hot, t, "review-pick", "Pick a commit or branch to review", h_flex().id("review-pick").h(24).px(5).flex_none().items_center().rounded_l(6).when(!segments.length, el => el.rounded_r(6))
       .hover(s => s.bg(t.hover)).on_hover(glow(view, "review-pick")).role("button").accessibility_label("Pick a commit or branch to review")
       .on_mouse_down("left", (e, cx) => { view.reviewPress = e.position; stop(e, cx); })
       .on_click((_e, cx) => { view.hot = null; cx.notify(); cx.spawn(async () => {
@@ -207,6 +206,7 @@ export function reviewBar(view, t, stop) {
         const height = Math.min(480, 10 + 36 + (commits.length ? 24 + commits.length * 32 : 0) + (commits.length && branches.length ? 9 : 0) + (branches.length ? 24 + branches.length * 32 : 0));
         openOverlay({ mod: MOD, kind: "popup", at: underBar(view.reviewPress), width: 480, height, props: { menu: "review", root: r.root, base: r.base, baseRef: r.baseRef, commits, branches, height } });
       }); })
-      .child(svg("mods/workspace-chrome/git-branch.svg").size(14))))
+      // image, not svg: svg would draw the logo in one tint.
+      .child(image(`mods/${MOD}/logo.svg`).w(14).h(14).flex_none())))
     .children(segments.flatMap((s, i) => [div().w(1).h(14).flex_none().bg(t.border), item(s, i === segments.length - 1)]));
 }
