@@ -6,7 +6,7 @@ Two [Herdr App](https://herdr.dev) mods for this fork of [pulls.review](https://
 
 ![pulls.review in Herdr](../preview.png)
 
-The Review bar shows only what there is: `4 ahead of main` (the branch's commits not on the default branch, with `· merged?` once its upstream is gone), `3 uncommitted` (uncommitted files), `↑2` (commits your upstream doesn't have), `↓1` (commits from your upstream). Click one to review just that diff. Click the branch icon to search and pick something else: a commit of this branch (on the default branch, a recent one), or another local branch against the default branch. The icon stays when there are no counts. It follows the focused pane; with the review pane focused, the terminals in its tab. The counts read your remote-tracking refs as they are: nothing is fetched for you.
+The Review bar shows only what there is: `4 ahead of main` (the branch's commits not on the default branch, with `· merged?` once its upstream is gone), `3 uncommitted` (uncommitted files), `↑2` (commits your upstream doesn't have), `↓1` (commits from your upstream). Click one to review just that diff. Click the logo to search and pick something else: a commit of this branch (on the default branch, a recent one), or another local branch against the default branch. The logo stays when there are no counts. It follows the focused pane; with the review pane focused, the terminals in its tab. The counts read your remote-tracking refs as they are: nothing is fetched for you.
 
 Where a review opens is `open` in `mods/pulls-review/config.json`:
 
@@ -15,7 +15,7 @@ Where a review opens is `open` in `mods/pulls-review/config.json`:
 - `"browser"`: the fork in the browser (`jin.review -d`).
 - `"official"`: the `pulls.review` CLI. Each worktree gets its own server, which herdr-core keeps running in the background (`hc ls --label pulls-review.root=<folder>`; stop one with `hc kill <address>`). The first open signs the browser in; later ones open a new tab on the same server.
 
-With the fork (`"herdr"`, `"pwa"`, `"browser"`), a click on a count also starts the diff's AI analysis, or follows the one already running. A pick from the branch icon's menu doesn't.
+With the fork (`"herdr"`, `"pwa"`, `"browser"`), a click on a count also starts the diff's AI analysis, or follows the one already running. A pick from the logo's menu doesn't.
 
 In `"herdr"` mode the pane's tab and header show its analysis with an agent's marks: a spinner while it runs; if it ended while you were on another tab, a dot when it finished or `!` when it failed, until you look. It isn't an agent, so it stays out of the agents list and Inbox.
 
