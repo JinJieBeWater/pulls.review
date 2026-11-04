@@ -10,7 +10,7 @@ function element(kind = "div", source) {
     if (key in target) return target[key];
     return (...args) => {
       if (key === "when") { if (args[0]) args[1](proxy); }
-      else if (key === "child") node.items.push(args[0]);
+      else if (key === "child" || key === "trigger") node.items.push(args[0]);
       else if (key === "children") node.items.push(...args[0]);
       else if (key === "on_mouse_down") node.handlers[`${key}:${args[0]}`] = args[1];
       else if (key.startsWith("on_")) node.handlers[key] = args[0];
@@ -37,7 +37,7 @@ const zoom = 1.1, calls = [], overlays = [], closed = [], notes = [], state = {}
 const theme = new Proxy({ foreground: "#f4f4f6", dim: "#77777f", border: "#2a2a30", hover: "#202024", ansi1: "#e06c75", ansi2: "#98c379", ansi3: "#c8a84b", ansi4: "#5f8fe0", ansi9: "#f08c95", ansi10: "#b5e09a", ansi11: "#e8cf7a", ansi12: "#8fb4f2" }, { get: (t, k) => t[k] ?? "#a9a9b4" });
 const env = {
   View: class {}, div: () => element(), h_flex: () => element("h"), v_flex: () => element("v"),
-  svg: (source) => element("svg", source), Input: { new: () => element("input") },
+  svg: (source) => element("svg", source), Input: { new: () => element("input") }, HoverCard: { new: (id) => element("hovercard").id(id) },
   InputState: { new: () => ({ on() {}, value: () => "", focus() {} }) },
   theme: () => theme, settings: () => ({ zoom }), window: () => ({ platform: "macos", active: true }),
   spaces: () => [{ id: "s", active: true, folder: "/space", tabs: [{ id: "b" }] }], panes: () => [{ pane: "p1", tab: "b", cwd: "/repo/src" }],
@@ -81,7 +81,8 @@ const load = (props = {}, setup) => {
   assert.deepEqual(strings(find(drawn, "review-changes")), ["3", "uncommitted"]);
   // One outline, its parts ruled apart: a control group on its own in any bar.
   assert.ok(find(drawn, "pulls-review").style.border);
-  assert.deepEqual(keys(find(drawn, "pulls-review")), ["review-pick", "div", "review-open", "div", "review-changes", "div", "review-ahead", "div", "review-behind"]);
+  assert.deepEqual(keys(find(drawn, "pulls-review")), ["tip-review-pick", "div", "tip-review-open", "div", "tip-review-changes", "div", "tip-review-ahead", "div", "tip-review-behind"]);
+  assert.equal(strings(find(drawn, "tip-review-ahead").style.content).length, 0, "its card waits for the hover");
   assert.ok("rounded_r" in find(drawn, "review-behind").style, "the last part's fill follows the outline's corner");
   assert.equal(find(drawn, "review-open").style.accessibility_label, "Review the branch: 4 commits on feat, not on main");
   for (const n of walk(drawn)) if (n.hoverStyle.text_color) assert.ok(!walk(n).some(c => c.kind === "svg"), `${n.key}: a hover style can't brighten its icon`);
@@ -101,13 +102,16 @@ const load = (props = {}, setup) => {
   assert.equal(countColor("review-changes"), theme.ansi3);
   assert.equal(find(drawn, "review-ahead").style.accessibility_label, "Review 2 commits to push: on feat, not on origin/feat", "the label says what a count compares");
   assert.equal(find(drawn, "review-behind").style.accessibility_label, "Review 1 commit to pull: on origin/feat as of your last fetch, not on feat");
-  assert.equal(walk(drawn).filter(n => "tooltip" in n.style).length, 0, "no hover tooltips");
+  assert.equal(walk(drawn).filter(n => "tooltip" in n.style).length, 0, "the shell's tooltip isn't Herdr T3's");
+  fire(find(drawn, "review-ahead"), "on_hover", true, cx);
+  assert.deepEqual(strings(find(bar.render(), "tip-review-ahead").style.content), ["Review 2 commits to push", "on feat, not on origin/feat"], "the label splits into what it does and what it compares");
+  fire(find(drawn, "review-ahead"), "on_hover", false, cx);
   Object.assign(shown, { pane: "p9", cwd: "/other" });
   assert.equal(find(bar.render(), "pulls-review"), null, "another location never shows this one's counts, even before its own read");
   Object.assign(shown, { pane: "p1", cwd: undefined });
   assert.ok(find(bar.render(), "review-open"), "coming back shows the last read at once");
   show({ ...review, unmerged: 0, changed: 0, ahead: 0, behind: 0 });
-  assert.deepEqual(keys(find(bar.render(), "pulls-review")), ["review-pick"], "no counts: the icon stays, the way in on a clean default branch");
+  assert.deepEqual(keys(find(bar.render(), "pulls-review")), ["tip-review-pick"], "no counts: the icon stays, the way in on a clean default branch");
   assert.ok("rounded_r" in find(bar.render(), "review-pick").style);
   show({ ...review, newer: 1, gone: true });
   assert.deepEqual(strings(find(bar.render(), "review-open")), ["4", "ahead of main · merged?"], "a deleted upstream shows, not only in the label");

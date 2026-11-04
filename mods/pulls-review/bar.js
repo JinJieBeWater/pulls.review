@@ -4,7 +4,7 @@
 // The counts read the remote-tracking refs as they are; fetching is left to you.
 
 import { div, svg } from "gpui-kit";
-import { h_flex, v_flex, InputState, Input } from "gpui-base";
+import { h_flex, v_flex, InputState, Input, HoverCard } from "gpui-base";
 import { spaces, panes, focused, exec, watchFolder, window, openOverlay, closeOverlay, props, theme, settings } from "herdr";
 
 const MOD = "pulls-review";
@@ -16,6 +16,12 @@ const glow = (view, id) => (on, cx) => {
   cx.notify();
 };
 const lit = (view, id, color = theme().dim) => (view.hot === id ? theme().foreground : color);
+// A hover label as Herdr T3's: `.tooltip()` takes only a string, in the shell's own style. Only while lit: a menu
+// opened from the button hides the pointer's leaving, and the card would stay up over it.
+const tip = (hot, t, id, label, trigger, hint) => HoverCard.new(`tip-${id}`).anchor("top_center").open_delay(300).close_delay(0).trigger(trigger)
+  .content(hot !== id ? div() : v_flex().mt(4).px(8).py(4).rounded(6).border(1).border_color(t.border).bg(t.chrome).shadow_md().text_size(12).text_color(t.foreground)
+    .child(div().child(label))
+    .when(Boolean(hint), el => el.child(div().text_color(t.muted).child(hint))));
 // A menu hangs from the bar (40px, as Herdr T3's tab bar) under the click, not on the pointer, where it would cover the
 // bar; the app keeps it in the window. With no press to read (assistive tech clicks without one), the app's default: the pointer.
 const underBar = (press) => press && { x: press.x - 8, y: 40 * settings().zoom };
@@ -170,35 +176,36 @@ export function reviewBar(view, t, stop) {
   const n = (count, noun) => `${count} ${noun}${count === 1 ? "" : "s"}`;
   // The accessibility label says what each count compares, which the short label can't.
   // The count carries the color; what it counts stays quiet beside it.
-  const item = (id, count, noun, ansi, name, args) => h_flex().id(id).h_full().px(8).gap(6).flex_none().items_center()
+  // 24, the outline's inside: a hover card's wrapper has no height for h_full to fill. Its label is the name's first part, its hint the rest.
+  const item = ([id, count, noun, ansi, name, args], last) => tip(view.reviewHover, t, id, name.split(": ")[0], h_flex().id(id).h(24).px(8).gap(6).flex_none().items_center()
     .text_size(12).text_color(t.dim).hover(s => s.bg(t.hover).text_color(t.foreground)).role("button").accessibility_label(name)
     // Herdr has no group hover. Entering the next segment can report before leaving this one.
     .on_hover((on, cx) => { if (on) view.reviewHover = id; else if (view.reviewHover === id) view.reviewHover = null; cx.notify(); })
     .on_click(() => openDiff(r.root, args, true))
     // Hovered, the label turns foreground: the count takes its bright twin (ansi + 8) to stay the lead, same hue.
     .child(div().font_medium().text_color(t[`ansi${view.reviewHover === id ? ansi + 8 : ansi}`]).child(count))
-    .when(Boolean(noun), el => el.child(noun));
+    .when(Boolean(noun), el => el.child(noun))
+    .when(last, el => el.rounded_r(6)), name.split(": ")[1]);
   const segments = [
     // A squash merge leaves the count standing, so a deleted upstream is the visible hint it may be done.
-    r.unmerged > 0 && item("review-open", String(r.unmerged), `ahead of ${r.base}${r.gone ? " · merged?" : ""}`, 4, `Review the branch: ${n(r.unmerged, "commit")} on ${r.branch}, not on ${r.baseRef}`
-      + (r.newer ? ` · ${r.baseRef} has ${n(r.newer, "newer commit")}` : "") + (r.gone ? ` · ${r.upstream} is gone, likely merged` : ""), []),
-    r.changed > 0 && item("review-changes", String(r.changed), "uncommitted", 3, `Review ${n(r.changed, "uncommitted file")}: staged, unstaged and new`, ["--worktree"]),
-    r.ahead > 0 && item("review-ahead", `↑${r.ahead}`, null, 2, `Review ${n(r.ahead, "commit")} to push: on ${r.branch}, not on ${r.upstream}`, [`${r.upstream}...${r.branch}`]),
-    r.behind > 0 && item("review-behind", `↓${r.behind}`, null, 1, `Review ${n(r.behind, "commit")} to pull: on ${r.upstream} as of your last fetch, not on ${r.branch}`, [`${r.branch}...${r.upstream}`]),
+    r.unmerged > 0 && ["review-open", String(r.unmerged), `ahead of ${r.base}${r.gone ? " · merged?" : ""}`, 4, `Review the branch: ${n(r.unmerged, "commit")} on ${r.branch}, not on ${r.baseRef}`
+      + (r.newer ? ` · ${r.baseRef} has ${n(r.newer, "newer commit")}` : "") + (r.gone ? ` · ${r.upstream} is gone, likely merged` : ""), []],
+    r.changed > 0 && ["review-changes", String(r.changed), "uncommitted", 3, `Review ${n(r.changed, "uncommitted file")}: staged, unstaged and new`, ["--worktree"]],
+    r.ahead > 0 && ["review-ahead", `↑${r.ahead}`, null, 2, `Review ${n(r.ahead, "commit")} to push: on ${r.branch}, not on ${r.upstream}`, [`${r.upstream}...${r.branch}`]],
+    r.behind > 0 && ["review-behind", `↓${r.behind}`, null, 1, `Review ${n(r.behind, "commit")} to pull: on ${r.upstream} as of your last fetch, not on ${r.branch}`, [`${r.branch}...${r.upstream}`]],
   ].filter(Boolean);
-  segments.at(-1)?.rounded_r(6);
   // Outlined, not filled: a fill would read as an active tab. Each part's fill runs to the outline and the rules.
   return h_flex().id("pulls-review").h(26).flex_none().items_center().rounded(6).border(1).border_color(t.border).on_mouse_down("left", stop)
     // Stays with no counts: on a clean default branch it's the only way in.
-    .child(h_flex().id("review-pick").h_full().px(5).flex_none().items_center().rounded_l(6).when(!segments.length, el => el.rounded_r(6)).text_color(lit(view, "review-pick"))
+    .child(tip(view.hot, t, "review-pick", "Pick a commit or branch to review", h_flex().id("review-pick").h(24).px(5).flex_none().items_center().rounded_l(6).when(!segments.length, el => el.rounded_r(6)).text_color(lit(view, "review-pick"))
       .hover(s => s.bg(t.hover)).on_hover(glow(view, "review-pick")).role("button").accessibility_label("Pick a commit or branch to review")
       .on_mouse_down("left", (e, cx) => { view.reviewPress = e.position; stop(e, cx); })
-      .on_click((_e, cx) => cx.spawn(async () => {
+      .on_click((_e, cx) => { view.hot = null; cx.notify(); cx.spawn(async () => {
         const { commits, branches } = await readPicks(r);
         if (!commits.length && !branches.length) return;
         const height = Math.min(480, 10 + 36 + (commits.length ? 24 + commits.length * 32 : 0) + (commits.length && branches.length ? 9 : 0) + (branches.length ? 24 + branches.length * 32 : 0));
         openOverlay({ mod: MOD, kind: "popup", at: underBar(view.reviewPress), width: 480, height, props: { menu: "review", root: r.root, base: r.base, baseRef: r.baseRef, commits, branches, height } });
-      }))
-      .child(svg("mods/workspace-chrome/git-branch.svg").size(14)))
-    .children(segments.flatMap(s => [div().w(1).h(14).flex_none().bg(t.border), s]));
+      }); })
+      .child(svg("mods/workspace-chrome/git-branch.svg").size(14))))
+    .children(segments.flatMap((s, i) => [div().w(1).h(14).flex_none().bg(t.border), item(s, i === segments.length - 1)]));
 }
