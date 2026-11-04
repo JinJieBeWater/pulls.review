@@ -98,8 +98,15 @@ function openUrl(url) {
   exec(command, args).catch(() => {});
 }
 
-// Herdr's file and line watches see the daemon's own git reads under .git; only the worktree, HEAD and refs mean a new diff.
-const meaningful = (path) => !path.includes("/.git/") || /\/\.git\/(HEAD|refs\/)/.test(path);
+// Worth a read? Of Git's own files only HEAD and refs, and nothing Git ignores: macOS reports those too.
+// `git check-ignore` exits 0 when some are ignored, listing them, 1 when none are, 128 when it can't judge.
+async function touchesDiff(root, paths) {
+  if (paths.some(p => /\/\.git\/(HEAD|refs\/)/.test(p))) return true;
+  const files = paths.filter(p => !/\/\.git(\/|$)/.test(p));
+  if (!files.length) return false;
+  const r = await exec("git", ["--no-optional-locks", "check-ignore", "--", ...files], { cwd: root }).catch(() => null);
+  return r?.code !== 0 || r.stdout.trim().split("\n").length < files.length;
+}
 
 // Spaces that end an element are drawn into a following ligature (` =>` shows as `)⇒`): each run's
 // trailing spaces lead the next run instead, where they hold their width.
@@ -186,7 +193,9 @@ export default class ReviewPane extends View {
       try {
         while (this.watching === root) {
           const paths = await watchFolder(root);
-          if (this.watching === root && paths.some(meaningful)) this.refresh(cx);
+          if (this.watching === root && await touchesDiff(root, paths)) this.refresh(cx);
+          // At most one change read a second: what changes meanwhile comes in the next batch.
+          await new Promise(resolve => cx.timer.after(1000, resolve));
         }
       } catch { this.watching = null; }
     });

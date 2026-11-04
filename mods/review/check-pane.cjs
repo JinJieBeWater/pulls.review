@@ -720,5 +720,30 @@ const timers = [], tick = () => timers.splice(0).forEach(f => f(cx));
   } }).Mod)();
   older.init({}, cx); await wait(); older.render(cx); await wait(); older.render(cx); await wait();
   assert.deepEqual(plain(oldReads), [[], ["a.ts", "b.png", "c.ts"]]);
+  // A watched change reads the diff only if it touches it: Git's HEAD or refs, or a file Git doesn't ignore (macOS reports
+  // those too). The next batch waits a second, so at most one change read a second.
+  let batch, watches = 0; const checked = [], watchReads = [];
+  const watcher = new (load("main.js", { ...env, localStorage: { getItem: (k) => k === "handled" ? "99" : null, setItem() {} },
+    watchFolder: () => { watches++; return new Promise(r => { batch = r; }); },
+    exec: async (_cmd, args) => {
+      const paths = args.slice(3), ignored = paths.filter(p => p.includes("node_modules"));
+      checked.push(paths);
+      return { code: ignored.length ? 0 : 1, stdout: ignored.join("\n") };
+    },
+    review: async (_root, route) => { watchReads.push(route); return { ...review, files: [] }; } }).Mod)();
+  watcher.init({}, cx); await wait();
+  const changed = async (paths) => {
+    watchReads.length = 0; timers.length = 0; const before = watches;
+    batch(paths); await wait();
+    const reads = watchReads.length, waited = watches === before;
+    tick(); await wait();
+    assert.ok(waited && watches === before + 1, "the next batch a second later");
+    return reads;
+  };
+  assert.equal(await changed(["/repo/.git/objects/ab/cd", "/repo/.git/index"]), 0);
+  assert.deepEqual(checked, [], "Git's own files are judged without asking it");
+  assert.equal(await changed(["/repo/node_modules/x"]), 0);
+  assert.equal(await changed(["/repo/node_modules/x", "/repo/a.ts"]), 1);
+  assert.equal(await changed(["/repo/.git/refs/heads/fix"]), 1);
   console.log("ok: pairs, items, notes and heights; the pane renders every analysis state, unified and split; rows only for the group shown, kept across polls; groups as tabs or a sidebar, the aside's files following the list, as a tree or a list; the fold menu; analysis settings and auto analyze; reads that don't undo marks or carry over to another diff; no zoom.");
 })();
