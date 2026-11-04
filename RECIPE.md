@@ -15,7 +15,7 @@ A Review bar for Herdr App's top bar and a review pane beside the agent: the bar
 
 - The bar follows the focused pane (a review pane: the terminals in its tab). It reads git on a new location, on a change in the worktree, else every 10 s; switching back shows the last read at once. Nothing is fetched.
 - A count's click opens that diff; with `"pwa"` or `"browser"` it also starts its AI analysis (or follows the one running). The logo opens a menu, closed by a second click, that picks a commit or a branch without analyzing. Enter in its search opens the top row. While the pane shows a diff, its count has a `hover` fill and, with one commit shown, `‹ Commit 3 of 54 ›` follows the counts: the arrows step through the commits, the middle opens the menu.
-- Where a review opens is `open` in `mods/pulls-review/config.json`: `herdr` (the pane), `pwa`, `browser` or `official` (the upstream CLI, one server per worktree kept by herdr-core).
+- Where a review opens is `open` in `mods/pulls-review/config.json`: `herdr` (the pane), `pwa`, `browser` or `official` (the upstream CLI, one server per worktree kept by herdr-core). The person creates that file; without it, `herdr`. The repo ships none, so overwriting the mods on an update keeps their pick.
 - In the pane: `j`/`k` next and previous file, `r` reviewed, `f` whole file, `c` collapse, `s` unified or split. Analyze shows `Analyzing…` from the click; its tab and the pane header show a spinner while it runs, and if it ended while another tab was shown, a `done` dot or a `blocked` `!` until the tab is looked at. In the pane a failure stays on the button.
 
 ## Built from

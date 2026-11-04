@@ -4,7 +4,7 @@
 import { spaces, panes, focused, exec, hc, window, notify, closeOverlay, run, shared, setShared, appHome, readTextFile } from "herdr";
 import { argPage, git, reviewLocation } from "./bar.js";
 
-// `open` in this folder's config.json (see mods/README.md):
+// `open` in this folder's config.json, which the person creates; none means "herdr" (see mods/README.md):
 // "herdr":    the fork's daemon, drawn in a pane beside the agent (the review mod).
 // "pwa":      the fork's `jin.review -d --pwa`, in the installed jin.review app.
 // "browser":  the fork's `jin.review -d`, one background server for every repo, in the browser.
