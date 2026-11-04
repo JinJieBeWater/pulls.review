@@ -167,7 +167,7 @@ export default class ReviewPane extends View {
 
   open(page, cx) {
     if (page === this.page) return;
-    this.page = page; this.review = null; this.error = null; this.analyzeError = null; this.startingUntil = 0; this.full.clear(); this.groupKey = null; this.current = null; this.headerHidden = false;
+    this.page = page; this.review = null; this.error = null; this.analyzeError = null; this.startingUntil = 0; this.full.clear(); this.asked.clear(); this.groupKey = null; this.current = null; this.headerHidden = false;
     this.wasRunning = false; this.news = null;
     this.remember(); this.version++;
     this.load(cx);

@@ -636,5 +636,14 @@ const timers = [], tick = () => timers.splice(0).forEach(f => f(cx));
   assert.equal(word(), null);
   await settle(); shownTab = "b";
   mainScope.review = daemon; pane.open(home, cx); await settle();
+  // Back to a page seen: the same files have the same shas, and its rows went with it, so they're asked for again.
+  const wait = async () => { for (let i = 0; i < 6; i++) await new Promise(setImmediate); };
+  const drawAll = async () => { for (let i = 0; i < 3; i++) { drawn.clear(); pane.render(cx); await wait(); } };
+  const there = pane.page;
+  await drawAll();
+  pane.open("/commit/c1", cx); await wait(); await drawAll();
+  pane.open(there, cx); await wait(); await drawAll();
+  const inGroup = groupFiles(pane.group()).map(path => pane.review.files.find(f => f.path === path)).filter(Boolean);
+  assert.ok(inGroup.length > 0 && inGroup.every(f => f.hunks), "rows on coming back");
   console.log("ok: pairs, items, notes and heights; the pane renders every analysis state, unified and split; rows only for the group shown, kept across polls; groups as tabs or a sidebar, the aside's files following the list, as a tree or a list; the fold menu; analysis settings and auto analyze; reads that don't undo marks or carry over to another diff; no zoom.");
 })();
