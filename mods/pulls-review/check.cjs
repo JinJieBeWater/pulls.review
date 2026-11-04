@@ -115,6 +115,14 @@ const load = (props = {}, setup) => {
   assert.ok("rounded_r" in find(bar.render(), "review-pick").style);
   show({ ...review, newer: 1, gone: true });
   assert.deepEqual(strings(find(bar.render(), "review-open")), ["4", "ahead of main · merged?"], "a deleted upstream shows, not only in the label");
+  // In a narrow bar the counts stand alone; the hover label gives back the words, and the accessibility label stays whole.
+  state["bar.compact"] = true;
+  assert.deepEqual(strings(find(bar.render(), "review-open")), ["4"]);
+  fire(find(bar.render(), "review-open"), "on_hover", true, cx);
+  assert.deepEqual(strings(find(bar.render(), "tip-review-open").style.content), ["4 ahead of main · merged?"]);
+  fire(find(bar.render(), "review-open"), "on_hover", false, cx);
+  assert.match(find(bar.render(), "review-open").style.accessibility_label, /^Review the branch: 4 commits on feat/);
+  delete state["bar.compact"];
   assert.equal(find(bar.render(), "review-open").style.accessibility_label,
     "Review the branch: 4 commits on feat, not on main · main has 1 newer commit · origin/feat is gone, likely merged");
   const full = status;

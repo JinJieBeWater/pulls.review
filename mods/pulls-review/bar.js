@@ -5,7 +5,7 @@
 
 import { div, svg } from "gpui-kit";
 import { h_flex, v_flex, InputState, Input, HoverCard } from "gpui-base";
-import { spaces, panes, focused, exec, watchFolder, window, openOverlay, closeOverlay, props, theme, settings } from "herdr";
+import { spaces, panes, focused, exec, watchFolder, window, openOverlay, closeOverlay, props, shared, theme, settings } from "herdr";
 
 const MOD = "pulls-review";
 
@@ -172,17 +172,20 @@ export function reviewBar(view, t, stop) {
   const r = view.reviews?.get(JSON.stringify(reviewLocation()));
   if (!r) return null;
   const n = (count, noun) => `${count} ${noun}${count === 1 ? "" : "s"}`;
+  // A narrow bar's layout sets it (Herdr T3's bar-measure): the counts alone, their colors telling them apart. Unset, the words too.
+  const compact = shared("bar.compact");
   // The accessibility label says what each count compares, which the short label can't.
   // The count carries the color; what it counts stays quiet beside it.
   // 24, the outline's inside: a hover card's wrapper has no height for h_full to fill. Its label is the name's first part.
-  const item = ([id, count, noun, ansi, name, args], last) => tip(view.reviewHover, t, id, name.split(": ")[0], h_flex().id(id).h(24).px(8).gap(6).flex_none().items_center()
+  // Compact, the label gives back the words the count lost, `· merged?` included.
+  const item = ([id, count, noun, ansi, name, args], last) => tip(view.reviewHover, t, id, compact && noun ? `${count} ${noun}` : name.split(": ")[0], h_flex().id(id).h(24).px(8).gap(6).flex_none().items_center()
     .text_size(12).text_color(t.dim).hover(s => s.bg(t.hover).text_color(t.foreground)).role("button").accessibility_label(name)
     // Herdr has no group hover. Entering the next segment can report before leaving this one.
     .on_hover((on, cx) => { if (on) view.reviewHover = id; else if (view.reviewHover === id) view.reviewHover = null; cx.notify(); })
     .on_click(() => openDiff(r.root, args, true))
     // Hovered, the label turns foreground: the count takes its bright twin (ansi + 8) to stay the lead, same hue.
     .child(div().font_medium().text_color(t[`ansi${view.reviewHover === id ? ansi + 8 : ansi}`]).child(count))
-    .when(Boolean(noun), el => el.child(noun))
+    .when(Boolean(noun) && !compact, el => el.child(noun))
     .when(last, el => el.rounded_r(6)));
   const segments = [
     // A squash merge leaves the count standing, so a deleted upstream is the visible hint it may be done.
