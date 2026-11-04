@@ -50,9 +50,11 @@ rest of `/api/*`. The body names a worktree by `path` (registered on first use, 
 `/api/launch` does) and a review by `page`, the same page `--analyze` takes:
 `/worktree`, `/branch/<name>`, `/compare/<A...B>` or `/commit/<sha>`.
 
-- `POST /api/review` `{ path, page, colors, rows? }` returns the review. `rows` names the files
+- `POST /api/review` `{ path, page, colors, rows?, firstRows? }` returns the review. `rows` names the files
   whose highlighted rows come with it (all of them when left out): a large diff's rows run
-  to megabytes, so the pane asks for the group it shows, and for none while it polls a run. The daemon fetches the
+  to megabytes, so the pane asks for the group it shows. `firstRows: true` adds the rows of the
+  first group's files (its own and its children's), so a pane that knows no group yet reads once,
+  with `rows: []`. The daemon fetches the
   page's diff with core's local source and, when it differs from the cached one,
   stores it with `putDiff`, so `changedSinceReviewed` and the saved AI result follow
   the same rules as a page load. `colors` maps syntax kinds (`keyword`, `string`,
@@ -61,6 +63,10 @@ rest of `/api/*`. The body names a worktree by `path` (registered on first use, 
   colors are the caller's theme, not a syntax theme of its own.
 - `POST /api/review/analyze` `{ path, page }` starts the analysis through the worktree
   server, as `-d --analyze` does (plan 03); a run already going is followed, not doubled.
+- `POST /api/review/status` `{ path, page }` returns `{ running, progress?, error? }` for the
+  page's analysis, from the page's key and the worktree server, without reading the diff; with no
+  worktree server started yet, `{ running: false }`. The pane polls it while a run goes and reads
+  the review once the run stops.
 - `POST /api/review/reviewed` `{ path, page, shas, reviewed }` sets reviewed marks and
   clears `changedSinceReviewed` for those files, as `DiffsStore.setReviewed` does.
 - `POST /api/review/file` `{ path, page, file, colors }` returns one file's full new
@@ -69,6 +75,11 @@ rest of `/api/*`. The body names a worktree by `path` (registered on first use, 
   as the worktree server's `agent-list` does; the pane writes its pick, and the language the analysis
   writes in, with the shell's `PUT /api/settings`. Whether the pane starts an analysis by itself is the pane's own
   setting: the app never starts a paid run unasked, so the shared settings don't carry it.
+
+`firstRows` and `/api/review/status` came with [plan 05](./05-review-dataflow.md), and the pane
+works against a daemon without them: an older one drops the unknown key, so the pane reads the
+first group's rows in a second read, and answers the unknown route with an error, so the pane
+polls `/api/review` with `rows: []` instead.
 
 The review's shape:
 
