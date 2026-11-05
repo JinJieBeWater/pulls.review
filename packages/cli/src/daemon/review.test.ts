@@ -142,6 +142,22 @@ it('shows the saved analysis, outdated once the diff moves on', async () => {
   expect((await read()).analysis.state).toBe('outdated')
 })
 
+it('has nothing to review once a range is empty, its analysis kept for when it isn\'t', async () => {
+  const { root, git } = await repo()
+  await git('branch', 'pushed')
+  await writeFile(join(root, 'a.ts'), 'const a = 2\n')
+  await git('commit', '-am', 'two')
+  const cache = createCacheRepositories(createStorage())
+  const read = () => readReview({ cwd: root, page: '/compare/pushed...main', colors, cache, running: async () => ({}), agent: false })
+  const { key } = await read()
+  await cache.diffs.setAnalyzedResult(key, 'llm', { source: 'llm', groups: [{ key: 'x', label: 'The change', category: 'core', filePaths: ['a.ts'] }], schemaVersion: 1, generatedAt: '2026-01-01T00:00:00.000Z', model: 'pi/m', headSha: (await git('rev-parse', 'HEAD')).stdout.trim() })
+  expect((await read()).analysis.state).toBe('current')
+  // Pushed: the base reaches the head, which stays the same, so the analysis's head still matches a diff with nothing in it.
+  await git('branch', '-f', 'pushed', 'main')
+  const empty = await read()
+  expect([empty.files, empty.groups, empty.source, empty.analysis.state]).toEqual([[], [], 'rule-based', 'none'])
+})
+
 it('reads a file\'s whole new side for a commit page', async () => {
   const { root, git } = await repo()
   await writeFile(join(root, 'a.ts'), 'const a = 1\n/* one\n   two */\nexport { a, b }\n')

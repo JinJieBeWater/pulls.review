@@ -265,7 +265,9 @@ export async function readReview(options: {
   const cached = await cache.diffs.get(key)
   const entry = cached?.headSha === head ? cached : await cache.diffs.putDiff(key, diff, head)
   const [reviewed, run] = await Promise.all([cache.reviewMarks.get(diff.files.map(file => file.sha)), running(key)])
-  const llm = entry.analyzedBy.llm
+  // An analysis matches by head alone, and a pushed range keeps its head with nothing left in it: no files, nothing to show.
+  // shortcut: a base that moves partway (part pushed) keeps the analysis current, its files gone shown as missing; stamp the base too if that misleads.
+  const llm = diff.files.length ? entry.analyzedBy.llm : undefined
   const groups = llm ?? await ruleBased.analyze(diff)
   const changed = new Set(entry.changedSinceReviewed)
   const state: AnalysisState = run.streamId ? 'running' : !llm ? 'none' : llm.headSha === head ? 'current' : 'outdated'
