@@ -86,11 +86,25 @@ function themeFor(colors: Colors): Theme {
   return theme
 }
 
-/** `text` highlighted line by line in the caller's colors. */
+/** Where the pane stops drawing a line: a log's or a minified file's lines would otherwise run a read to megabytes. */
+const MAX_COLUMNS = 1000
+
+/** `text` highlighted line by line in the caller's colors, each line cut at MAX_COLUMNS characters. */
 export function highlight(text: string, path: string, colors: Colors): Token[][] {
   const foreground = colors.foreground?.toLowerCase()
   const { tokens } = codeToTokens(text, { lang: languageOf(path), theme: themeFor(colors), tokenizeMaxLineLength: 2000 })
-  return tokens.map(line => line.map(({ content, color }) => !color || color === foreground ? [content] : [content, color]))
+  return tokens.map((line) => {
+    const out: Token[] = []
+    let left = MAX_COLUMNS
+    for (const { content, color } of line) {
+      if (left <= 0)
+        break
+      const text = content.slice(0, left)
+      out.push(!color || color === foreground ? [text] : [text, color])
+      left -= content.length
+    }
+    return out
+  })
 }
 
 /** A hunk's rows, each side highlighted as one text so a comment or string spanning lines keeps its color. */
@@ -253,6 +267,24 @@ export class ReviewError extends Error {
  * from the cached one, as a page load with auto-refresh does: the saved analysis is kept,
  * and files reviewed before but changed since are flagged by `putDiff`.
  */
+/** An open's rows stop past this many changed lines: a big group's run past the 8 MB a pane reads, which asks for the rest as it scrolls. */
+const FIRST_ROWS = 3000
+
+/** The group's own files and its children's, as the pane's `groupFiles`, while they fit in FIRST_ROWS; the first one always. */
+function firstRowFiles(group: ReviewGroup, files: FileChange[]): string[] {
+  const byPath = new Map(files.map(file => [file.path, file]))
+  const out: string[] = []
+  let lines = 0
+  for (const path of [group, ...group.children].flatMap(child => child.files)) {
+    const size = byPath.get(path)!.additions + byPath.get(path)!.deletions
+    if (out.length && lines + size > FIRST_ROWS)
+      break
+    out.push(path)
+    lines += size
+  }
+  return out
+}
+
 export async function readReview(options: {
   cwd: string
   page: string
@@ -280,8 +312,7 @@ export async function readReview(options: {
   const state: AnalysisState = run.streamId ? 'running' : !llm ? 'none' : llm.headSha === head ? 'current' : 'outdated'
   const resolved = llm ? fromLlm! : resolveGroups((await ruleBased.analyze(diff)).groups, diff.files)
   const first = options.firstRows ? resolved[0] : undefined
-  // The first group's own files and its children's, as the pane's `groupFiles`.
-  const wanted = options.rows && new Set([...options.rows, ...first ? [first, ...first.children].flatMap(group => group.files) : []])
+  const wanted = options.rows && new Set([...options.rows, ...first ? firstRowFiles(first, diff.files) : []])
   return {
     key,
     title: diff.title,

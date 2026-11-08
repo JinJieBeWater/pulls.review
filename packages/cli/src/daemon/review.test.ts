@@ -145,6 +145,20 @@ it('shows the saved analysis, outdated once the diff moves on', async () => {
   expect((await read()).analysis.state).toBe('outdated')
 })
 
+it('opens with the first group\'s rows only as far as 3000 changed lines go, and cuts every line at 1000 columns', async () => {
+  const { root } = await repo()
+  // Two files of 2000 lines in one group: rows for both would carry 4000.
+  await writeFile(join(root, 'a.ts'), Array.from({ length: 2000 }, (_, i) => `const a${i} = ${i}`).join('\n'))
+  await writeFile(join(root, 'b.ts'), `${'x'.repeat(5000)}\n${Array.from({ length: 1999 }, (_, i) => `const b${i} = ${i}`).join('\n')}`)
+  const cache = createCacheRepositories(createStorage())
+  const opened = await readReview({ cwd: root, page: '/worktree', colors, cache, running: async () => ({}), agent: false, rows: [], firstRows: true })
+  expect(opened.groups[0]!.files).toEqual(['a.ts', 'b.ts'])
+  expect(opened.files.filter(file => file.hunks).map(file => file.path)).toEqual(['a.ts'])
+  const asked = await readReview({ cwd: root, page: '/worktree', colors, cache, running: async () => ({}), agent: false, rows: ['b.ts'] })
+  const long = asked.files.find(file => file.path === 'b.ts')!.hunks!.flatMap(hunk => hunk.rows).find(row => row.new === 1)!
+  expect(long.tokens.reduce((n, [text]) => n + text.length, 0)).toBe(1000)
+})
+
 it('drops a group none of whose files are left, keeping a parent whose subgroup still has some', () => {
   const groups: DiffGroup[] = [
     { key: 'gone', label: 'Gone', category: 'core', filePaths: ['gone.ts'], children: [{ key: 'gone-child', label: 'Gone too', category: 'core', filePaths: ['also-gone.ts'] }] },
