@@ -142,7 +142,12 @@ function hunkShowsLine(file: FileChange, side: DiffSide, line: number): boolean 
   })
 }
 
-/** Mirrors the app's `resolveGroups` (`components/diff/group-utils.ts`), which the CLI cannot import: it needs vue-i18n. */
+const UNCATEGORIZED = 'uncategorized'
+
+/**
+ * Mirrors the app's `resolveGroups` (`components/diff/group-utils.ts`), which the CLI cannot import: it needs vue-i18n.
+ * Unlike the app's, a group none of whose files are left is dropped: a local page's key outlives the files it held.
+ */
 export function resolveGroups(groups: DiffGroup[], files: FileChange[]): ReviewGroup[] {
   const byPath = new Map(files.map(file => [file.path, file]))
   const byPreviousPath = new Map(files.flatMap(file => file.previousPath ? [[file.previousPath, file] as const] : []))
@@ -189,10 +194,12 @@ export function resolveGroups(groups: DiffGroup[], files: FileChange[]): ReviewG
     }
   }
 
-  const resolvedGroups: ReviewGroup[] = groups.map(group => ({ ...resolveLeaf(group), children: (group.children ?? []).map(child => ({ ...resolveLeaf(child), children: [] })) }))
+  const resolvedGroups: ReviewGroup[] = groups
+    .map(group => ({ ...resolveLeaf(group), children: (group.children ?? []).map(child => ({ ...resolveLeaf(child), children: [] })).filter(child => child.files.length) }))
+    .filter(group => group.files.length || group.children.length)
   const uncategorized = files.filter(file => !referenced.has(file))
   if (uncategorized.length > 0)
-    resolvedGroups.push({ key: 'uncategorized', label: 'Uncategorized', summary: 'Files not covered by the current analysis.', category: 'other', critical: false, files: uncategorized.map(file => file.path), missing: [], notes: {}, children: [] })
+    resolvedGroups.push({ key: UNCATEGORIZED, label: 'Uncategorized', summary: 'Files not covered by the current analysis.', category: 'other', critical: false, files: uncategorized.map(file => file.path), missing: [], notes: {}, children: [] })
   return resolvedGroups
 }
 
@@ -265,13 +272,13 @@ export async function readReview(options: {
   const cached = await cache.diffs.get(key)
   const entry = cached?.headSha === head ? cached : await cache.diffs.putDiff(key, diff, head)
   const [reviewed, run] = await Promise.all([cache.reviewMarks.get(diff.files.map(file => file.sha)), running(key)])
-  // An analysis matches by head alone, and a pushed range keeps its head with nothing left in it: no files, nothing to show.
-  // shortcut: a base that moves partway (part pushed) keeps the analysis current, its files gone shown as missing; stamp the base too if that misleads.
-  const llm = diff.files.length ? entry.analyzedBy.llm : undefined
-  const groups = llm ?? await ruleBased.analyze(diff)
+  // A range's key outlives its commits: with no group left, the analysis was of other files.
+  // shortcut: a base moved partway keeps the analysis current, pushed files shown missing; stamp the base if that misleads.
+  const fromLlm = entry.analyzedBy.llm && resolveGroups(entry.analyzedBy.llm.groups, diff.files)
+  const llm = fromLlm?.some(group => group.key !== UNCATEGORIZED) ? entry.analyzedBy.llm : undefined
   const changed = new Set(entry.changedSinceReviewed)
   const state: AnalysisState = run.streamId ? 'running' : !llm ? 'none' : llm.headSha === head ? 'current' : 'outdated'
-  const resolved = resolveGroups(groups.groups, diff.files)
+  const resolved = llm ? fromLlm! : resolveGroups((await ruleBased.analyze(diff)).groups, diff.files)
   const first = options.firstRows ? resolved[0] : undefined
   // The first group's own files and its children's, as the pane's `groupFiles`.
   const wanted = options.rows && new Set([...options.rows, ...first ? [first, ...first.children].flatMap(group => group.files) : []])

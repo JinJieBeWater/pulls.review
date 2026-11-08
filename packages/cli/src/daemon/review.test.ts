@@ -57,8 +57,11 @@ it('lays a file\'s whole new side around its hunks', () => {
   ])
 })
 
+function file(path: string, extra: Partial<FileChange> = {}): FileChange {
+  return { path, sha: path, status: 'modified', additions: 1, deletions: 0, isBinary: false, hunks: [{ header: '', oldStart: 1, oldLines: 1, newStart: 1, newLines: 2, patch: '' }], ...extra }
+}
+
 it('resolves groups as the app does: renamed paths, missing paths, anchored notes and the rest uncategorized', () => {
-  const file = (path: string, extra: Partial<FileChange> = {}): FileChange => ({ path, sha: path, status: 'modified', additions: 1, deletions: 0, isBinary: false, hunks: [{ header: '', oldStart: 1, oldLines: 1, newStart: 1, newLines: 2, patch: '' }], ...extra })
   const groups: DiffGroup[] = [{
     key: 'g',
     label: 'G',
@@ -140,6 +143,31 @@ it('shows the saved analysis, outdated once the diff moves on', async () => {
 
   await writeFile(join(root, 'a.ts'), 'const a = 33\n')
   expect((await read()).analysis.state).toBe('outdated')
+})
+
+it('drops a group none of whose files are left, keeping a parent whose subgroup still has some', () => {
+  const groups: DiffGroup[] = [
+    { key: 'gone', label: 'Gone', category: 'core', filePaths: ['gone.ts'], children: [{ key: 'gone-child', label: 'Gone too', category: 'core', filePaths: ['also-gone.ts'] }] },
+    { key: 'parent', label: 'Parent', category: 'core', filePaths: ['gone.ts'], children: [{ key: 'empty', label: 'Empty', category: 'core', filePaths: [] }, { key: 'kept', label: 'Kept', category: 'core', filePaths: ['b.ts'] }] },
+  ]
+  const resolved = resolveGroups(groups, [file('b.ts'), file('c.ts')])
+  expect(resolved.map(group => [group.key, group.children.map(child => child.key)])).toEqual([['parent', ['kept']], ['uncategorized', []]])
+})
+
+it('shows no analysis once a range holds none of its files, as after a push and new commits', async () => {
+  const { root, git } = await repo()
+  await git('branch', 'pushed')
+  await writeFile(join(root, 'a.ts'), 'const a = 2\n')
+  await git('commit', '-am', 'two')
+  const cache = createCacheRepositories(createStorage())
+  const read = () => readReview({ cwd: root, page: '/compare/pushed...main', colors, cache, running: async () => ({}), agent: false })
+  const { key } = await read()
+  await cache.diffs.setAnalyzedResult(key, 'llm', { source: 'llm', groups: [{ key: 'x', label: 'The change', category: 'core', filePaths: ['a.ts'] }], schemaVersion: 1, generatedAt: '2026-01-01T00:00:00.000Z', model: 'pi/m', headSha: (await git('rev-parse', 'HEAD')).stdout.trim() })
+  await git('branch', '-f', 'pushed', 'main')
+  await writeFile(join(root, 'a.test.ts'), 'it("b", () => {})\n')
+  await git('commit', '-am', 'three')
+  const other = await read()
+  expect([other.files.map(f => f.path), other.source, other.analysis.state, other.groups.some(group => group.key === 'x')]).toEqual([['a.test.ts'], 'rule-based', 'none', false])
 })
 
 it('has nothing to review once a range is empty, its analysis kept for when it isn\'t', async () => {
