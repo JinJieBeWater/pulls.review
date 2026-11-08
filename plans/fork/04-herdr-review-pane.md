@@ -90,7 +90,11 @@ The review's shape:
 - `groups`: the saved AI analysis when there is one, else the rule-based groups, each
   resolved against the diff as the app's `resolveGroups` does: file paths still in the
   diff, `missing` paths, an `Uncategorized` group for the rest, notes per file with a
-  line `anchor` only where a hunk shows that line, and `critical`.
+  line `anchor` only where a hunk shows that line, and `critical`. Unlike the app's, a
+  group with none of its files left is dropped. A page's key names a range or the
+  worktree, not its commits, so a push can leave it empty or holding other files: an
+  analysis with no group left is of other files, and the page shows the rule-based
+  groups with `analysis` `none`. The saved analysis stays for when its files come back.
 - `analysis`: `none`, `current` (made for this head), `outdated` (made for an older
   head) or `running` with the latest progress; whether a local agent is set up.
 - `commits`: the diff's commits, oldest first. A commit opens as `/commit/<sha>`.
