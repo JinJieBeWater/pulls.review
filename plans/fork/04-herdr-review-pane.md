@@ -52,9 +52,11 @@ rest of `/api/*`. The body names a worktree by `path` (registered on first use, 
 
 - `POST /api/review` `{ path, page, colors, rows?, firstRows? }` returns the review. `rows` names the files
   whose highlighted rows come with it (all of them when left out): a large diff's rows run
-  to megabytes, so the pane asks for the group it shows. `firstRows: true` adds the rows of the
-  first group's files (its own and its children's), so a pane that knows no group yet reads once,
-  with `rows: []`. The daemon fetches the
+  to megabytes, past the 8 MB a pane reads at once, so the pane asks for the files in view and
+  the next few, up to 3000 changed lines a read. `firstRows: true` adds the rows of the first
+  group's files (its own and its children's) while they fit in 3000 changed lines, the first one
+  always, so a pane that knows no group yet reads once, with `rows: []`. Every line is cut at
+  1000 columns, where the pane stops drawing. The daemon fetches the
   page's diff with core's local source and, when it differs from the cached one,
   stores it with `putDiff`, so `changedSinceReviewed` and the saved AI result follow
   the same rules as a page load. `colors` maps syntax kinds (`keyword`, `string`,

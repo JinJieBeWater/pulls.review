@@ -36,7 +36,8 @@ answers an unknown route with an error.
 
 - `POST /api/review` takes an optional `firstRows: boolean`. True: the rows of the first group's
   files (its own and its children's, as the pane's `groupFiles`) come as well as those named in
-  `rows`. The pane sends `rows: []` with it.
+  `rows`, while they fit in 3000 changed lines (the first file always). The pane sends `rows: []`
+  with it.
 - `POST /api/review/status` `{ path, page }` answers
   `{ running: boolean, progress?, error? }` for that page's analysis, from the page's key and the
   worktree server's state, without reading the diff. No server started yet: `{ running: false }`.
