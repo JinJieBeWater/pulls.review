@@ -1,7 +1,7 @@
 import type { Commit, DiffsPayload } from '../types/diff'
 import type { DiffSource } from '../types/source'
 import type { LocalTarget } from './target'
-import { copyFile, mkdtemp, readFile, rm } from 'node:fs/promises'
+import { copyFile, mkdtemp, readFile, realpath, rm } from 'node:fs/promises'
 import { devNull, tmpdir } from 'node:os'
 import { isAbsolute, join, relative, resolve } from 'node:path'
 import { computeContentHash, parsePatch } from '../patch-parser'
@@ -156,11 +156,12 @@ export function createLocalSource({ cwd, target }: LocalSourceOptions): LocalSou
     async loadFile(path, sha) {
       const repo = await root
       if (sha.startsWith(WORKTREE_PREFIX)) {
-        // `path` may come from a browser over RPC: never read outside the repository.
-        const inside = relative(repo, resolve(repo, path))
+        // `path` may come from a browser over RPC, and a symlink may point anywhere: never read outside the repository.
+        const real = await realpath(resolve(repo, path)).catch(() => undefined)
+        const inside = real && relative(await realpath(repo), real)
         if (!inside || inside.startsWith('..') || isAbsolute(inside))
           return undefined
-        return readFile(join(repo, path), 'utf8').catch(() => undefined)
+        return readFile(real, 'utf8').catch(() => undefined)
       }
       if (await tryGit(repo, ['cat-file', '-e', `${sha}:${path}`]) === undefined)
         return undefined

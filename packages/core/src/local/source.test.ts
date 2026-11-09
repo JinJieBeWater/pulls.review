@@ -1,6 +1,6 @@
 import { Buffer } from 'node:buffer'
 import { execFileSync } from 'node:child_process'
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
@@ -57,6 +57,25 @@ describe('local source', () => {
     expect(await source.loadFile!('a.ts', diff.head!.sha)).toBe('two\n')
     expect(await source.loadFile!('a.ts', diff.base!.sha)).toBe('one\n')
     expect(await source.loadFile!('../outside.txt', diff.head!.sha)).toBeUndefined()
+  })
+
+  it('reads no working-tree file through a symlink that leaves the repository', async () => {
+    write('a.ts', 'one\n')
+    commit('init')
+    const outside = mkdtempSync(join(tmpdir(), 'pulls-review-outside-'))
+    try {
+      writeFileSync(join(outside, 'secret.txt'), 'OUTSIDE\n')
+      symlinkSync(join(outside, 'secret.txt'), join(repo, 'link.txt'))
+      symlinkSync('a.ts', join(repo, 'alias.ts'))
+      const source = createLocalSource({ cwd: repo, target: '' })
+      const { head, files } = await source.fetch()
+      expect(files.map(file => file.path)).toEqual(['alias.ts', 'link.txt'])
+      expect(await source.loadFile!('link.txt', head!.sha)).toBeUndefined()
+      expect(await source.loadFile!('alias.ts', head!.sha)).toBe('one\n')
+    }
+    finally {
+      rmSync(outside, { recursive: true, force: true })
+    }
   })
 
   it('moves the working-tree fingerprint when HEAD moves under an unchanged diff', async () => {
