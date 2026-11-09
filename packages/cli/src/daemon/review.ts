@@ -51,7 +51,7 @@ export interface ReviewFile extends Omit<FileChange, 'hunks'> {
   test: boolean
   /** Left out unless asked for (`rows`): a large diff's rows run to megabytes. No `header`: a page's first hunk, which goes on from the one before. */
   hunks?: { header?: string, rows: Row[] }[]
-  /** Its rows stop early: by themselves they ran past what one read carries (ROW_BYTES). */
+  /** Its rows stop early: by themselves they ran past what one read carries (`Budget`). */
   clipped?: true
 }
 export type AnalysisState = 'none' | 'current' | 'outdated' | 'running'
@@ -270,50 +270,30 @@ export class ReviewError extends Error {
 }
 
 /**
- * A review page as the pane draws it. The diff is fetched fresh and stored when it differs
- * from the cached one, as a page load with auto-refresh does: the saved analysis is kept,
- * and files reviewed before but changed since are flagged by `putDiff`.
- */
-/** An open's rows stop past this many changed lines: a big group's run past the 8 MB a pane reads, which asks for the rest as it scrolls. */
-const FIRST_ROWS = 3000
-
-/** The group's own files and its children's, as the pane's `groupFiles`, while they fit in FIRST_ROWS; the first one always. */
-function firstRowFiles(group: ReviewGroup, files: FileChange[]): string[] {
-  const byPath = new Map(files.map(file => [file.path, file]))
-  const out: string[] = []
-  let lines = 0
-  for (const path of [group, ...group.children].flatMap(child => child.files)) {
-    const size = byPath.get(path)!.additions + byPath.get(path)!.deletions
-    if (out.length && lines + size > FIRST_ROWS)
-      break
-    out.push(path)
-    lines += size
-  }
-  return out
-}
-
-/**
- * Where a read's rows stop, in bytes of JSON: Herdr reads at most 8 MiB, and a line's tokens can outweigh its text many times.
+ * What one read's rows still carry. `bytes` of JSON: Herdr reads at most 8 MiB, and a line's tokens can outweigh its text many
+ * times. `rows` and `tokens`: the pane builds a read's rows in one render, which Herdr stops past about 50 ms; real opens of
+ * about 3000 rows and 10,000 tokens build in time, while bytes alone let through 80,000 short rows or 320,000 tokens.
  * shortcut: the page's files and groups aren't counted; a page of 10,000 files takes about 4 MiB of them, count them if one comes near.
  */
-const ROW_BYTES = 4 * 1024 * 1024
+interface Budget { bytes: number, rows: number, tokens: number }
+const readBudget = (): Budget => ({ bytes: 4 * 1024 * 1024, rows: 3000, tokens: 10_000 })
 
-/** How many of `rows`, from the first, fit in `budget` bytes of JSON, and the bytes they take. */
-function rowsWithin(rows: Row[], budget: number): [count: number, bytes: number] {
-  let bytes = 0
+/** How many of `rows`, from the first, fit in what `left` carries, taken from it. */
+function rowsWithin(rows: Row[], left: Budget): number {
   for (const [index, row] of rows.entries()) {
-    const size = Buffer.byteLength(JSON.stringify(row)) + 1
-    if (bytes + size > budget)
-      return [index, bytes]
-    bytes += size
+    const bytes = Buffer.byteLength(JSON.stringify(row)) + 1
+    if (bytes > left.bytes || left.rows < 1 || row.tokens.length > left.tokens)
+      return index
+    left.bytes -= bytes
+    left.rows--
+    left.tokens -= row.tokens.length
   }
-  return [rows.length, bytes]
+  return rows.length
 }
 
-/** A file's rows from its `from`th on, while `budget` bytes last, the bytes they take, and whether that cut them short. */
-function fileRows(file: FileChange, colors: Colors, budget: number, from = 0): { hunks: NonNullable<ReviewFile['hunks']>, bytes: number, clipped: boolean } {
+/** A file's rows from its `from`th on, while `left` lasts, and whether that cut them short. */
+function fileRows(file: FileChange, colors: Colors, left: Budget, from = 0): { hunks: NonNullable<ReviewFile['hunks']>, clipped: boolean } {
   const hunks: NonNullable<ReviewFile['hunks']> = []
-  let used = 0
   let skip = from
   for (const hunk of file.hunks) {
     // The hunks a page already sent are counted, not highlighted.
@@ -325,38 +305,36 @@ function fileRows(file: FileChange, colors: Colors, budget: number, from = 0): {
     const rows = hunkRows(hunk, file.path, colors).slice(skip)
     const head = skip ? {} : { header: hunk.header }
     skip = 0
-    const header = Buffer.byteLength(JSON.stringify(head)) + 12
-    const [count, bytes] = rowsWithin(rows, budget - used - header)
+    left.bytes -= Buffer.byteLength(JSON.stringify(head)) + 12
+    const count = rowsWithin(rows, left)
     if (count < rows.length) {
       if (count)
         hunks.push({ ...head, rows: rows.slice(0, count) })
-      return { hunks, bytes: used + header + bytes, clipped: true }
+      return { hunks, clipped: true }
     }
     hunks.push({ ...head, rows })
-    used += header + bytes
   }
-  return { hunks, bytes: used, clipped: false }
+  return { hunks, clipped: false }
 }
 
 /**
- * The rows of `paths`, in order, each file whole while ROW_BYTES lasts: the files past it get none, for a later read.
+ * The rows of `paths`, in order, each file whole while one read's budget lasts: the files past it get none, for a later read.
  * The first is cut there instead, `clipped`: by itself it can run past what a read carries. It starts at its `from`th row.
  */
 function servedRows(paths: string[], files: FileChange[], colors: Colors, from = 0): Map<string, Pick<ReviewFile, 'hunks' | 'clipped'>> {
   const byPath = new Map(files.map(file => [file.path, file]))
   const served = new Map<string, Pick<ReviewFile, 'hunks' | 'clipped'>>()
-  let left = ROW_BYTES
+  const left = readBudget()
   for (const path of new Set(paths)) {
     const file = byPath.get(path)
     if (!file)
       continue
-    const { hunks, bytes, clipped } = fileRows(file, colors, left, path === paths[0] ? from : 0)
+    const { hunks, clipped } = fileRows(file, colors, left, path === paths[0] ? from : 0)
     if (clipped && served.size)
       break
     served.set(path, clipped ? { hunks, clipped: true } : { hunks })
     if (clipped)
       break
-    left -= bytes
   }
   return served
 }
@@ -368,9 +346,9 @@ export async function readReview(options: {
   cache: CacheRepositories
   running: (key: string) => Promise<RunningState>
   agent: boolean
-  /** The files whose highlighted rows to include, in order while ROW_BYTES lasts (`servedRows`); all of them when omitted. */
+  /** The files whose highlighted rows to include, in order while one read's budget lasts (`servedRows`); all of them when omitted. */
   rows?: string[]
-  /** The first group's files get their rows too, so an open needs one read (plans/fork/05). */
+  /** The first group's files, its own and its children's as the pane's `groupFiles`, get their rows too, so an open needs one read (plans/fork/05). */
   firstRows?: boolean
 }): Promise<Review> {
   const { cwd, page, colors, cache, running, agent } = options
@@ -392,7 +370,7 @@ export async function readReview(options: {
   const state: AnalysisState = run.streamId ? 'running' : !llm ? 'none' : llm.headSha === head ? 'current' : 'outdated'
   const resolved = resolveGroups(llm ? llm.groups : (await ruleBased.analyze(diff)).groups, diff.files)
   const first = options.firstRows ? resolved[0] : undefined
-  const served = servedRows(options.rows ? [...options.rows, ...first ? firstRowFiles(first, diff.files) : []] : diff.files.map(file => file.path), diff.files, colors)
+  const served = servedRows(options.rows ? [...options.rows, ...first ? [first, ...first.children].flatMap(group => group.files) : []] : diff.files.map(file => file.path), diff.files, colors)
   return {
     key,
     title: diff.title,
@@ -449,7 +427,7 @@ export async function setReviewed(options: { cwd: string, page: string, cache: C
 
 /**
  * One file's whole new side around its hunks, from the diff the page shows, from its `from`th row on; `truncated` past
- * ROW_BYTES, as one read carries no more, the rest for a read from where it stops.
+ * what one read carries (`Budget`), the rest for a read from where it stops.
  * shortcut: each page highlights the whole file again (a 170,000-line one takes seconds); keep its tokens if paging drags.
  */
 export async function readFullFile(options: { cwd: string, page: string, path: string, colors: Colors, from?: number }): Promise<{ rows: Row[], truncated?: true }> {
@@ -463,6 +441,6 @@ export async function readFullFile(options: { cwd: string, page: string, path: s
   if (text === undefined)
     throw new ReviewError(404, `No text for ${path}`)
   const rows = fullRows(file, text, colors).slice(from)
-  const [count] = rowsWithin(rows, ROW_BYTES)
+  const count = rowsWithin(rows, readBudget())
   return count < rows.length ? { rows: rows.slice(0, count), truncated: true } : { rows }
 }

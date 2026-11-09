@@ -1,4 +1,5 @@
 import type { DiffGroup, FileChange } from '@pulls.review/core/types'
+import type { ReviewFile } from './review'
 import { Buffer } from 'node:buffer'
 import { execFile } from 'node:child_process'
 import { mkdtemp, realpath, rm, writeFile } from 'node:fs/promises'
@@ -154,7 +155,7 @@ it('shows the saved analysis, outdated once the diff moves on', async () => {
   expect((await read()).analysis.state).toBe('outdated')
 })
 
-it('opens with the first group\'s rows only as far as 3000 changed lines go, and cuts every line at 1000 columns', async () => {
+it('opens with the first group\'s rows only as far as 3000 rows go, and cuts every line at 1000 columns', async () => {
   const { root } = await repo()
   // Two files of 2000 lines in one group: rows for both would carry 4000.
   await writeFile(join(root, 'a.ts'), Array.from({ length: 2000 }, (_, i) => `const a${i} = ${i}`).join('\n'))
@@ -272,7 +273,8 @@ it('keeps a read\'s rows under what Herdr reads, cutting a file too big by itsel
   const read = (rows: string[], firstRows = false) => readReview({ cwd: root, page: '/worktree', colors: { ...colors, number: '#d19a66' }, cache, running: async () => ({}), agent: false, rows, firstRows })
   const opened = await read([], true)
   expect(bytes(opened)).toBeLessThan(LIMIT)
-  expect(opened.files.filter(file => file.hunks).map(file => [file.path, file.clipped ?? false])).toEqual([['a.js', false]])
+  // Its tokens stop the first file before its bytes would.
+  expect(opened.files.filter(file => file.hunks).map(file => [file.path, file.clipped ?? false])).toEqual([['a.js', true]])
   const asked = await read(['b.js', 'c.js'])
   expect(bytes(asked)).toBeLessThan(LIMIT)
   expect(asked.files.filter(file => file.hunks).map(file => file.path)).toEqual(['b.js'])
@@ -285,6 +287,26 @@ it('keeps a read\'s rows under what Herdr reads, cutting a file too big by itsel
   const whole = await readFullFile({ cwd: root, page: '/worktree', path: 'a.js', colors })
   expect([bytes(whole) < LIMIT, whole.truncated]).toEqual([true, true])
 }, 60_000)
+
+it('stops a read at 3000 rows and 10,000 tokens, which the pane builds in one render, whatever their bytes', async () => {
+  const { root } = await repo()
+  // Short lines: few bytes a row. Dense lines: 321 tokens each.
+  await writeFile(join(root, 'a.js'), '1\n'.repeat(5000))
+  await writeFile(join(root, 'b.js'), `${'1+'.repeat(160)}1\n`.repeat(100))
+  const cache = createCacheRepositories(createStorage())
+  const pageColors = { ...colors, number: '#d19a66' }
+  const shown = await readReview({ cwd: root, page: '/worktree', colors: pageColors, cache, running: async () => ({}), agent: false, rows: ['a.js'] })
+  const rowsOf = (file: { hunks?: { rows: { tokens: unknown[] }[] }[] }) => file.hunks!.flatMap(hunk => hunk.rows)
+  const a = shown.files.find(file => file.path === 'a.js')!
+  expect([rowsOf(a).length, a.clipped]).toEqual([3000, true])
+  const next = await readRows({ cwd: root, page: '/worktree', colors: pageColors, cache, files: ['b.js'], base: shown.base!.sha, head: shown.head!.sha })
+  const b = (next as { files: ReviewFile[] }).files[0]!
+  expect(b.clipped).toBe(true)
+  expect(rowsOf(b).reduce((n, row) => n + row.tokens.length, 0)).toBeLessThanOrEqual(10_000)
+  expect(rowsOf(b).length).toBeGreaterThan(0)
+  const whole = await readFullFile({ cwd: root, page: '/worktree', path: 'a.js', colors: pageColors })
+  expect([whole.rows.length, whole.truncated]).toEqual([3000, true])
+})
 
 it('cuts a whole file past what Herdr reads, and marks it truncated', async () => {
   const { root } = await repo()
@@ -323,7 +345,7 @@ it('pages a file too big for one read, by itself and as a whole file, end to end
   const diff = [...first.hunks!]
   let clipped = first.clipped
   for (let pages = 1; clipped; pages++) {
-    expect(pages).toBeLessThan(10)
+    expect(pages).toBeLessThan(60)
     const next = await readRows({ cwd: root, page, colors: pageColors, cache, files: ['a.js'], ...shas, from: diff.flatMap(hunk => hunk.rows).length })
     if (!('files' in next))
       throw new Error('stale')
@@ -337,7 +359,7 @@ it('pages a file too big for one read, by itself and as a whole file, end to end
 
   const whole: number[] = []
   for (let truncated: true | undefined = true, pages = 0; truncated; pages++) {
-    expect(pages).toBeLessThan(10)
+    expect(pages).toBeLessThan(60)
     const next = await readFullFile({ cwd: root, page, path: 'a.js', colors: pageColors, from: whole.length })
     expect(bytes(next)).toBeLessThan(LIMIT)
     whole.push(...next.rows.map(row => row.new!))
