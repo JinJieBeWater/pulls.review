@@ -38,6 +38,10 @@ answers an unknown route with an error.
   files (its own and its children's, as the pane's `groupFiles`) come as well as those named in
   `rows`, while they fit in 3000 changed lines (the first file always). The pane sends `rows: []`
   with it. Rows stop at 4 MiB of JSON as [plan 04](./04-herdr-review-pane.md) says.
+- After the open, a batch's rows, and the next page of a file cut short, come from
+  `POST /api/review/rows` (plan 04), and a whole file's next page from `/api/review/file` with
+  `from`. An older daemon answers the rows route with an error, and the pane reads the batch
+  with the whole page, as before; it answers `stale` the same way.
 - `POST /api/review/status` `{ path, page }` answers
   `{ running: boolean, progress?, error? }` for that page's analysis, from the page's key and the
   worktree server's state, without reading the diff. No server started yet: `{ running: false }`.

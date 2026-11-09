@@ -60,12 +60,20 @@ rest of `/api/*`. The body names a worktree by `path` (registered on first use, 
   then the first group's) while 4 MiB of their JSON lasts: a line's tokens can outweigh its text
   many times. A file that doesn't fit whole comes without `hunks`, for a later read to ask for;
   the first always comes, and one past 4 MiB by itself is cut there and marked `clipped`. The daemon fetches the
-  page's diff with core's local source and, when it differs from the cached one,
-  stores it with `putDiff`, so `changedSinceReviewed` and the saved AI result follow
+  page's diff with core's local source and, when it differs from the cached one (its head, or a
+  range's base under the same head), stores it with `putDiff`, so the cache holds the diff last read, and `changedSinceReviewed` and the saved AI result follow
   the same rules as a page load. `colors` maps syntax kinds (`keyword`, `string`,
   `comment`, `function`, `type`, `number`, `constant`, `foreground`) to hex colors; the
   daemon builds a Zed theme from them and highlights with `@pierre/highlights`, so the
   colors are the caller's theme, not a syntax theme of its own.
+- `POST /api/review/rows` `{ path, page, colors, files, base, head, from? }` returns
+  `{ files: [{ path, sha, hunks, clipped? }] }`: only those files' rows, packed as `/api/review`
+  packs `rows`, and nothing else. A read of the whole page for a batch carried every file and
+  group again, about 550 KB more a batch on a branch of 1,554 files, and ran Git each time. These come from the cached
+  diff, with no Git diff, when its `base.sha` and `head.sha` are the ones sent, the review the pane
+  shows; any other diff answers `{ stale: true }`, and the pane reads the page with `rows` instead.
+  `from` skips that many rows of the first file, across its hunks, for the next page of one
+  `clipped`: a hunk that starts part way through comes without `header`, going on from the last.
 - `POST /api/review/analyze` `{ path, page }` starts the analysis through the worktree
   server, as `-d --analyze` does (plan 03); a run already going is followed, not doubled.
 - `POST /api/review/status` `{ path, page }` returns `{ running, progress?, error? }` for the
@@ -75,9 +83,10 @@ rest of `/api/*`. The body names a worktree by `path` (registered on first use, 
   run goes and reads the review once the run stops.
 - `POST /api/review/reviewed` `{ path, page, shas, reviewed }` sets reviewed marks and
   clears `changedSinceReviewed` for those files, as `DiffsStore.setReviewed` does.
-- `POST /api/review/file` `{ path, page, file, colors }` returns `{ rows, truncated? }`, one
+- `POST /api/review/file` `{ path, page, file, colors, from? }` returns `{ rows, truncated? }`, one
   file's full new side, highlighted, for showing the whole file around its hunks; past 4 MiB of
-  rows it stops there, `truncated: true`. A working-tree file whose real path leaves the
+  rows it stops there, `truncated: true`, and `from` reads on from a row, a page at a time. Each
+  page highlights the whole file again: 85,000 minified lines take a third of a second a page. A working-tree file whose real path leaves the
   worktree, through a symlink, has no text to show.
 - `GET /api/agents` lists the agent CLIs on `PATH` with their versions and model catalogs,
   as the worktree server's `agent-list` does; the pane writes its pick, and the language the analysis
