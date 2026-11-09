@@ -56,14 +56,22 @@ rest of `/api/*`. The body names a worktree by `path` (registered on first use, 
   the next few. `firstRows: true` adds the rows of the first group's files (its own and its
   children's), so a pane that knows no group yet reads once, with `rows: []`. Every line is cut at
   1000 columns, where the pane stops drawing. Rows come for those files in that order (`rows`,
-  then the first group's) while one read's budget lasts: 4 MiB of their JSON, as a line's tokens
-  can outweigh its text many times, and 3000 rows and 10,000 tokens, which the pane builds in one
-  render that Herdr stops past about 50 ms. Real opens of a 1,554-file branch carry about that
-  many. A file that doesn't fit whole comes without `hunks`, for a later read to ask for; the
-  first always comes, and one past the budget by itself is cut there and marked `clipped`. The daemon fetches the
-  page's diff with core's local source and, when it differs from the cached one (its head, or a
-  range's base under the same head), stores it with `putDiff`, so the cache holds the diff last read, and `changedSinceReviewed` and the saved AI result follow
-  the same rules as a page load. `colors` maps syntax kinds (`keyword`, `string`,
+  then the first group's) while one read's budget lasts: about 600 KB of their JSON, as a line's
+  tokens can outweigh its text many times and the pane parses a read on its one thread (with a
+  large page's 444 KB of files and groups a read stays near 1 MiB), and 3000 rows and 10,000
+  tokens, which bound what the pane builds from one read. They don't fit one render: a real
+  first read of 2,865 rows and 9,185 tokens ran past the 50 ms Herdr allows. Every row sent
+  carries `columns`, how wide its tokens draw by the pane's rule (a tab 4, a wide character 2).
+  A file that doesn't fit whole comes without `hunks`, for a later read to ask for; the
+  first always comes, and one past the budget by itself is cut there and marked `clipped`. The
+  daemon resolves the page's base and head shas first (core's local source `revisions()`): while
+  they name the cached diff, and this daemon process stored it, that diff is served with no Git
+  diff or log. Otherwise it fetches the diff and, when it differs from the cached one (its head,
+  or a range's base under the same head) or this process hasn't stored it yet, stores it with
+  `putDiff`, so the cache holds the diff last read, and `changedSinceReviewed` and the saved AI
+  result follow the same rules as a page load. The working tree has no sha before its diff, so
+  its page is always fetched. A restarted (upgraded) daemon stores each page over once, so a diff
+  an older parser wrote isn't served. `colors` maps syntax kinds (`keyword`, `string`,
   `comment`, `function`, `type`, `number`, `constant`, `foreground`) to hex colors; the
   daemon builds a Zed theme from them and highlights with `@pierre/highlights`, so the
   colors are the caller's theme, not a syntax theme of its own.
@@ -85,7 +93,8 @@ rest of `/api/*`. The body names a worktree by `path` (registered on first use, 
 - `POST /api/review/reviewed` `{ path, page, shas, reviewed }` sets reviewed marks and
   clears `changedSinceReviewed` for those files, as `DiffsStore.setReviewed` does.
 - `POST /api/review/file` `{ path, page, file, colors, from? }` returns `{ rows, truncated? }`, one
-  file's full new side, highlighted, for showing the whole file around its hunks; past one read's
+  file's full new side, highlighted, for showing the whole file around its hunks, from the page's
+  diff as `/api/review` finds it (served from the cache, or fetched and stored); past one read's
   budget (as `/api/review`'s rows) it stops there, `truncated: true`, and `from` reads on from a
   row, a page at a time. Each page highlights the whole file again: 85,000 minified lines take a
   third of a second a page. A symlink's text is its link text, as Git stores it; a working-tree
