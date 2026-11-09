@@ -67,7 +67,8 @@ export type RepoRegistry = ReturnType<typeof createRepoRegistry>
 
 export function createRepoRegistry(file: string) {
   let pending: Promise<unknown> = Promise.resolve()
-  let snapshot: { trees: Promise<Map<string, Worktree>>, expires: number } | undefined
+  /** `scanned` is when the scan ended: +Infinity while it runs, -Infinity once it failed. */
+  let snapshot: { trees: Promise<Map<string, Worktree>>, scanned: number } | undefined
 
   async function repos(): Promise<Repo[]> {
     try {
@@ -136,16 +137,23 @@ export function createRepoRegistry(file: string) {
   }
 
   async function find(id: string): Promise<Worktree | undefined> {
-    // shortcut: external worktree changes can lag 1s; invalidate on Git events if immediate discovery is needed.
-    if (!snapshot || snapshot.expires <= Date.now()) {
-      const next = { trees: scan(), expires: Number.POSITIVE_INFINITY }
+    // A known worktree is trusted for a minute, past the pane's 1.5 s status poll: each scan runs git in every registered repo.
+    // shortcut: a worktree added outside shows within 1 s, one removed outside lingers up to 60 s; invalidate on Git events if that misleads.
+    const age = snapshot ? Date.now() - snapshot.scanned : Number.POSITIVE_INFINITY
+    if (snapshot && age < 60_000) {
+      const tree = (await snapshot.trees).get(id)
+      if (tree || age < 1000)
+        return tree
+    }
+    if (snapshot?.scanned !== Number.POSITIVE_INFINITY) {
+      const next = { trees: scan(), scanned: Number.POSITIVE_INFINITY }
       snapshot = next
       void next.trees.then(
-        () => { next.expires = Date.now() + 1000 },
-        () => { next.expires = 0 },
+        () => { next.scanned = Date.now() },
+        () => { next.scanned = Number.NEGATIVE_INFINITY },
       )
     }
-    return (await snapshot.trees).get(id)
+    return (await snapshot!.trees).get(id)
   }
 
   return { repos, add, addCurrent, remove, find }

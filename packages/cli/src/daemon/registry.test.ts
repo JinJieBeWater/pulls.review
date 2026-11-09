@@ -33,7 +33,7 @@ async function fixture(name = 'main') {
 }
 
 describe('repository registry', () => {
-  it('shares lookup scans until expiry and invalidates them after registration changes', async () => {
+  it('shares lookup scans, rescans for an unknown worktree, and invalidates them after registration changes', async () => {
     const { root, main, linked, file, registry, git } = await fixture()
     await registry.add(main)
     await writeFile(file, JSON.stringify({ repos: [{ path: join(root, 'missing') }, { path: main }] }))
@@ -44,10 +44,14 @@ describe('repository registry', () => {
     expect(lookups).toEqual(Array.from({ length: 4 }, () => ({ id, path: linked, branch: 'feature' })))
     expect(await registry.find(id)).toEqual(lookups[0])
     expect(vi.mocked(realpath).mock.calls.filter(([path]) => path === linked)).toHaveLength(1)
+    // A known worktree, asked for past the pane's 1.5 s poll: no scan of every repo.
+    clock.mockReturnValue(2500)
+    expect(await registry.find(id)).toEqual(lookups[0])
+    expect(vi.mocked(realpath).mock.calls.filter(([path]) => path === linked)).toHaveLength(1)
 
     const added = join(root, 'added')
     await git(['worktree', 'add', '-b', 'added', added], main)
-    clock.mockReturnValue(2001)
+    clock.mockReturnValue(2600)
     expect(await registry.find(worktreeId(added))).toMatchObject({ path: added, branch: 'added' })
     expect(vi.mocked(realpath).mock.calls.filter(([path]) => path === linked)).toHaveLength(2)
 
