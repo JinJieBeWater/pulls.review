@@ -1,14 +1,12 @@
 import { join } from 'node:path'
 import process from 'node:process'
 import { fileURLToPath } from 'node:url'
-import { createCacheRepositories } from '@pulls.review/core/cache'
 import { LOCAL_AGENT_CHANNEL, LOCAL_DEVFRAME_ID } from '@pulls.review/core/local-rpc'
 import { defineDevframe } from 'devframe'
-import { createStorage } from 'unstorage'
 import pkg from '../package.json' with { type: 'json' }
 import { agentRpcFunctions } from './agents/rpc'
 import { localRpcFunctions } from './rpc'
-import { createRepoCacheDriver, repoCacheDir } from './storage'
+import { createRepoCacheDriver, createRepoCaches, repoCacheDir } from './storage'
 
 /**
  * The one definition every surface consumes: the `pulls.review` CLI (`index.ts`)
@@ -43,7 +41,7 @@ export default defineDevframe({
         patchDir: join(await repoCacheDir(ctx.cwd), 'agent'),
         // The browser subscribes after the call that started the run returns, or after a reload: replay what it missed.
         channel: scope.rpc.streaming.create(LOCAL_AGENT_CHANNEL, { replayWindow: 4096 }),
-        diffs: createCacheRepositories(createStorage({ driver })).diffs,
+        diffs: (await createRepoCaches(ctx.cwd)).diffs,
       }),
     ]
     for (const fn of functions)

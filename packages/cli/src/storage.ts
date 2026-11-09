@@ -1,8 +1,13 @@
+import type { CacheRepositories, KeyLock } from '@pulls.review/core/cache'
 import type { Driver } from 'unstorage'
 import { execFile } from 'node:child_process'
 import { createHash } from 'node:crypto'
-import { resolve } from 'node:path'
+import { mkdir, rm, stat } from 'node:fs/promises'
+import { join, resolve } from 'node:path'
+import { setTimeout as delay } from 'node:timers/promises'
 import { promisify } from 'node:util'
+import { createCacheRepositories } from '@pulls.review/core/cache'
+import { createStorage } from 'unstorage'
 import fsDriver from 'unstorage/drivers/fs'
 
 /**
@@ -44,4 +49,46 @@ export async function repoCacheDir(cwd: string): Promise<string> {
 
 export async function createRepoCacheDriver(cwd: string): Promise<Driver> {
   return flatKeys(fsDriver({ base: await repoCacheDir(cwd) }))
+}
+
+/** Past this, a lock is a crashed holder's: a cache write takes well under a second. */
+const STALE_LOCK_MS = 30_000
+
+/**
+ * `task` run holding `<dir>/<hash of key>`: `mkdir` creates a directory or fails at once, in every process, so
+ * processes sharing a cache (the daemon, each worktree server) take turns at an entry's read-merge-write.
+ */
+export function dirLock(dir: string): KeyLock {
+  return async (key, task) => {
+    const path = join(dir, createHash('sha256').update(key).digest('hex'))
+    await mkdir(dir, { recursive: true })
+    for (let wait = 2; ; wait = Math.min(wait * 2, 50)) {
+      try {
+        await mkdir(path)
+        break
+      }
+      catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== 'EEXIST')
+          throw error
+        // shortcut: two waiters can both find one lock stale and both take it; give the holder a heartbeat if that ever bites.
+        const held = await stat(path).then(stats => Date.now() - stats.mtimeMs, () => 0)
+        if (held > STALE_LOCK_MS)
+          await rm(path, { recursive: true, force: true })
+        else
+          await delay(wait)
+      }
+    }
+    try {
+      return await task()
+    }
+    finally {
+      await rm(path, { recursive: true, force: true })
+    }
+  }
+}
+
+/** The repo's cache, its entries' writes locked across the processes that share it (`dirLock`). */
+export async function createRepoCaches(cwd: string): Promise<CacheRepositories> {
+  const dir = await repoCacheDir(cwd)
+  return createCacheRepositories(createStorage({ driver: flatKeys(fsDriver({ base: dir })) }), undefined, dirLock(join(dir, 'locks')))
 }
