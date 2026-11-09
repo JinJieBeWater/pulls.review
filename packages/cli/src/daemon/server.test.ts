@@ -204,6 +204,12 @@ it('gives the pane an open\'s first group in one read, and a run\'s status witho
 
   const opened = await (await post('/api/review', { page: '/worktree', colors: {}, rows: [], firstRows: true })).json()
   expect(opened.files.map((file: { path: string, hunks?: unknown }) => [file.path, !!file.hunks])).toEqual([['a.ts', true]])
+  // A later batch's rows come on their own, from the diff the open read; a page past its last row has none.
+  const rows = { page: '/worktree', colors: {}, files: ['a.ts'], base: opened.base.sha, head: opened.head.sha }
+  expect(await (await post('/api/review/rows', rows)).json()).toEqual({ files: [{ path: 'a.ts', sha: opened.files[0].sha, hunks: opened.files[0].hunks }] })
+  expect(await (await post('/api/review/rows', { ...rows, from: 2 })).json()).toEqual({ files: [{ path: 'a.ts', sha: opened.files[0].sha, hunks: [] }] })
+  expect((await post('/api/review/rows', { ...rows, from: -1 })).status).toBe(400)
+  expect((await post('/api/review/rows', { ...rows, files: Array.from({ length: 300 }, (_, i) => `apps/some/deep/folder/file-${i}.ts`) })).status).toBe(200)
 
   // A range git can't resolve: a read of its diff fails, its status doesn't. No server started yet: nothing runs.
   expect((await post('/api/review', { page: '/compare/nope...gone', colors: {} })).status).toBe(500)

@@ -10,7 +10,7 @@ import { createCacheRepositories } from '@pulls.review/core/cache'
 import { createLocalSource } from '@pulls.review/core/local'
 import { createStorage } from 'unstorage'
 import { afterEach, expect, it, vi } from 'vitest'
-import { fullRows, hunkRows, readFullFile, readReview, readStatus, resolveGroups, setReviewed } from './review'
+import { fullRows, hunkRows, readFullFile, readReview, readRows, readStatus, resolveGroups, setReviewed } from './review'
 
 const exec = promisify(execFile)
 const colors = { foreground: '#cccccc', keyword: '#ff00ff', string: '#00ff00', comment: '#808080' }
@@ -286,3 +286,54 @@ it('cuts a whole file past what Herdr reads, and marks it truncated', async () =
   await writeFile(join(root, 'a.txt'), 'x\n')
   expect(await readFullFile({ cwd: root, page: '/worktree', path: 'a.txt', colors })).not.toHaveProperty('truncated')
 })
+
+it('reads only the asked files\' rows from the diff the pane shows, and says when that isn\'t the one cached', async () => {
+  const { root } = await repo()
+  await writeFile(join(root, 'a.ts'), 'const a = 2\n/* one\n   two */\nexport { a }\n')
+  await writeFile(join(root, 'b.ts'), 'export const b = 1\n')
+  const cache = createCacheRepositories(createStorage())
+  const shown = await readReview({ cwd: root, page: '/worktree', colors, cache, running: async () => ({}), agent: false, rows: [] })
+  const shas = { base: shown.base!.sha, head: shown.head!.sha }
+  const rows = await readRows({ cwd: root, page: '/worktree', colors, cache, files: ['b.ts'], ...shas })
+  expect(rows).toEqual({ files: [{ path: 'b.ts', sha: shown.files.find(file => file.path === 'b.ts')!.sha, hunks: [{ header: expect.any(String), rows: [expect.objectContaining({ kind: '+', new: 1 })] }] }] })
+  // Changed since, the page isn't read again: the rows are still the shown diff's.
+  await writeFile(join(root, 'b.ts'), 'export const b = 2\nexport const c = 3\n')
+  expect((await readRows({ cwd: root, page: '/worktree', colors, cache, files: ['b.ts'], ...shas }) as any).files[0].hunks[0].rows).toHaveLength(1)
+  expect(await readRows({ cwd: root, page: '/worktree', colors, cache, files: ['b.ts'], ...shas, head: 'other' })).toEqual({ stale: true })
+  expect(await readRows({ cwd: root, page: '/worktree', colors, cache: createCacheRepositories(createStorage()), files: ['b.ts'], ...shas })).toEqual({ stale: true })
+})
+
+it('pages a file too big for one read, by itself and as a whole file, end to end', async () => {
+  const { root } = await repo()
+  await writeFile(join(root, 'a.js'), '1\n'.repeat(170000))
+  const cache = createCacheRepositories(createStorage())
+  const page = '/worktree'
+  const pageColors = { ...colors, number: '#d19a66' }
+  const shown = await readReview({ cwd: root, page, colors: pageColors, cache, running: async () => ({}), agent: false, rows: ['a.js'] })
+  const shas = { base: shown.base!.sha, head: shown.head!.sha }
+  const first = shown.files.find(file => file.path === 'a.js')!
+  const diff = [...first.hunks!]
+  let clipped = first.clipped
+  for (let pages = 1; clipped; pages++) {
+    expect(pages).toBeLessThan(10)
+    const next = await readRows({ cwd: root, page, colors: pageColors, cache, files: ['a.js'], ...shas, from: diff.flatMap(hunk => hunk.rows).length })
+    if (!('files' in next))
+      throw new Error('stale')
+    expect(bytes(next)).toBeLessThan(LIMIT)
+    // Going on from the hunk before, a page's first hunk has no header.
+    expect(next.files[0]!.hunks![0]).not.toHaveProperty('header')
+    diff.push(...next.files[0]!.hunks!)
+    clipped = next.files[0]!.clipped
+  }
+  expect(diff.flatMap(hunk => hunk.rows).map(row => row.new)).toEqual(Array.from({ length: 170000 }, (_, i) => i + 1))
+
+  const whole: number[] = []
+  for (let truncated: true | undefined = true, pages = 0; truncated; pages++) {
+    expect(pages).toBeLessThan(10)
+    const next = await readFullFile({ cwd: root, page, path: 'a.js', colors: pageColors, from: whole.length })
+    expect(bytes(next)).toBeLessThan(LIMIT)
+    whole.push(...next.rows.map(row => row.new!))
+    truncated = next.truncated
+  }
+  expect(whole).toEqual(Array.from({ length: 170000 }, (_, i) => i + 1))
+}, 120_000)

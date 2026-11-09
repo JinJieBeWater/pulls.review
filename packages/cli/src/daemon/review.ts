@@ -48,8 +48,8 @@ export interface ReviewFile extends Omit<FileChange, 'hunks'> {
   changed: boolean
   noisy: boolean
   test: boolean
-  /** Left out unless asked for (`rows`): a large diff's rows run to megabytes. */
-  hunks?: { header: string, rows: Row[] }[]
+  /** Left out unless asked for (`rows`): a large diff's rows run to megabytes. No `header`: a page's first hunk, which goes on from the one before. */
+  hunks?: { header?: string, rows: Row[] }[]
   /** Its rows stop early: by themselves they ran past what one read carries (ROW_BYTES). */
   clipped?: true
 }
@@ -108,9 +108,12 @@ export function highlight(text: string, path: string, colors: Colors): Token[][]
   })
 }
 
+/** A hunk's patch lines, one a row. */
+const patchLines = (hunk: DiffHunk) => hunk.patch.split('\n').filter(line => line && !line.startsWith('\\') && !line.startsWith('@@'))
+
 /** A hunk's rows, each side highlighted as one text so a comment or string spanning lines keeps its color. */
 export function hunkRows(hunk: DiffHunk, path: string, colors: Colors): Row[] {
-  const lines = hunk.patch.split('\n').filter(line => line && !line.startsWith('\\') && !line.startsWith('@@'))
+  const lines = patchLines(hunk)
   const side = (keep: string) => highlight(lines.filter(line => keep.includes(line[0]!)).map(line => line.slice(1)).join('\n'), path, colors)
   const olds = side(' -')
   const news = side(' +')
@@ -306,20 +309,29 @@ function rowsWithin(rows: Row[], budget: number): [count: number, bytes: number]
   return [rows.length, bytes]
 }
 
-/** A file's rows while `budget` bytes last, the bytes they take, and whether that cut them short. */
-function fileRows(file: FileChange, colors: Colors, budget: number): { hunks: NonNullable<ReviewFile['hunks']>, bytes: number, clipped: boolean } {
+/** A file's rows from its `from`th on, while `budget` bytes last, the bytes they take, and whether that cut them short. */
+function fileRows(file: FileChange, colors: Colors, budget: number, from = 0): { hunks: NonNullable<ReviewFile['hunks']>, bytes: number, clipped: boolean } {
   const hunks: NonNullable<ReviewFile['hunks']> = []
   let used = 0
+  let skip = from
   for (const hunk of file.hunks) {
-    const rows = hunkRows(hunk, file.path, colors)
-    const header = Buffer.byteLength(JSON.stringify(hunk.header)) + 24
+    // The hunks a page already sent are counted, not highlighted.
+    const lines = patchLines(hunk).length
+    if (skip >= lines) {
+      skip -= lines
+      continue
+    }
+    const rows = hunkRows(hunk, file.path, colors).slice(skip)
+    const head = skip ? {} : { header: hunk.header }
+    skip = 0
+    const header = Buffer.byteLength(JSON.stringify(head)) + 12
     const [count, bytes] = rowsWithin(rows, budget - used - header)
     if (count < rows.length) {
       if (count)
-        hunks.push({ header: hunk.header, rows: rows.slice(0, count) })
+        hunks.push({ ...head, rows: rows.slice(0, count) })
       return { hunks, bytes: used + header + bytes, clipped: true }
     }
-    hunks.push({ header: hunk.header, rows })
+    hunks.push({ ...head, rows })
     used += header + bytes
   }
   return { hunks, bytes: used, clipped: false }
@@ -327,9 +339,9 @@ function fileRows(file: FileChange, colors: Colors, budget: number): { hunks: No
 
 /**
  * The rows of `paths`, in order, each file whole while ROW_BYTES lasts: the files past it get none, for a later read.
- * The first is cut there instead, `clipped`: by itself it can run past what a read carries.
+ * The first is cut there instead, `clipped`: by itself it can run past what a read carries. It starts at its `from`th row.
  */
-function servedRows(paths: string[], files: FileChange[], colors: Colors): Map<string, Pick<ReviewFile, 'hunks' | 'clipped'>> {
+function servedRows(paths: string[], files: FileChange[], colors: Colors, from = 0): Map<string, Pick<ReviewFile, 'hunks' | 'clipped'>> {
   const byPath = new Map(files.map(file => [file.path, file]))
   const served = new Map<string, Pick<ReviewFile, 'hunks' | 'clipped'>>()
   let left = ROW_BYTES
@@ -337,7 +349,7 @@ function servedRows(paths: string[], files: FileChange[], colors: Colors): Map<s
     const file = byPath.get(path)
     if (!file)
       continue
-    const { hunks, bytes, clipped } = fileRows(file, colors, left)
+    const { hunks, bytes, clipped } = fileRows(file, colors, left, path === paths[0] ? from : 0)
     if (clipped && served.size)
       break
     served.set(path, clipped ? { hunks, clipped: true } : { hunks })
@@ -366,7 +378,8 @@ export async function readReview(options: {
   const head = diff.head?.sha ?? ''
   const cached = await cache.diffs.get(key)
   // A hit is a view too: eviction goes by `lastViewedAt`, and a page read often must outlast one read once.
-  const entry = cached?.headSha === head ? (await cache.diffs.touch(key), cached) : await cache.diffs.putDiff(key, diff, head)
+  // A range's base can move under the same head: stored then too, the cache holds the diff last read, which `readRows` serves.
+  const entry = cached?.headSha === head && cached.diff.base?.sha === diff.base?.sha ? (await cache.diffs.touch(key), cached) : await cache.diffs.putDiff(key, diff, head)
   // A run that can't be asked about isn't over: the read still shows the page, with why the state is unknown.
   const [reviewed, run] = await Promise.all([cache.reviewMarks.get(diff.files.map(file => file.sha)), running(key).catch((error): RunningState => ({ error: `Can't tell whether an analysis runs: ${error instanceof Error ? error.message : error}` }))])
   // A range's key outlives its commits: with none of its files left, the analysis was of other files.
@@ -399,6 +412,19 @@ export async function readReview(options: {
   }
 }
 
+/**
+ * Only `files`' rows, as `readReview` serves them (`servedRows`), from the diff the pane shows, named by its `base` and `head`
+ * shas: that's the one the cache holds, last read, so no Git diff runs. Any other, `stale`: the pane reads the page again.
+ */
+export async function readRows(options: { cwd: string, page: string, colors: Colors, cache: CacheRepositories, files: string[], base: string, head: string, from?: number }): Promise<{ files: Pick<ReviewFile, 'path' | 'sha' | 'hunks' | 'clipped'>[] } | { stale: true }> {
+  const { cwd, page, colors, cache, files, base, head, from } = options
+  const entry = await cache.diffs.get(await pageKey(cwd, page))
+  if (!entry || (entry.diff.base?.sha ?? '') !== base || (entry.diff.head?.sha ?? '') !== head)
+    return { stale: true }
+  const served = servedRows(files, entry.diff.files, colors, from)
+  return { files: entry.diff.files.flatMap(file => served.has(file.path) ? [{ path: file.path, sha: file.sha, ...served.get(file.path) }] : []) }
+}
+
 /** Whether a page's analysis runs, from its key and the worktree server alone: polling a run reads no diff (plans/fork/05). */
 export async function readStatus(options: { cwd: string, page: string, running: (key: string) => Promise<RunningState> }): Promise<{ running: boolean, progress?: RunningState['progress'], error?: string }> {
   const { streamId, progress, error } = await options.running(await pageKey(options.cwd, options.page))
@@ -420,9 +446,13 @@ export async function setReviewed(options: { cwd: string, page: string, cache: C
     await cache.diffs.setChangedSinceReviewed(key, remaining)
 }
 
-/** One file's whole new side around its hunks, from the diff the page shows; `truncated` past ROW_BYTES, as one read carries no more. */
-export async function readFullFile(options: { cwd: string, page: string, path: string, colors: Colors }): Promise<{ rows: Row[], truncated?: true }> {
-  const { cwd, page, path, colors } = options
+/**
+ * One file's whole new side around its hunks, from the diff the page shows, from its `from`th row on; `truncated` past
+ * ROW_BYTES, as one read carries no more, the rest for a read from where it stops.
+ * shortcut: each page highlights the whole file again (a 170,000-line one takes seconds); keep its tokens if paging drags.
+ */
+export async function readFullFile(options: { cwd: string, page: string, path: string, colors: Colors, from?: number }): Promise<{ rows: Row[], truncated?: true }> {
+  const { cwd, page, path, colors, from = 0 } = options
   const source = createLocalSource({ cwd, target: await pageTarget(cwd, page) })
   const diff = await source.fetch()
   const file = diff.files.find(candidate => candidate.path === path)
@@ -431,7 +461,7 @@ export async function readFullFile(options: { cwd: string, page: string, path: s
   const text = file.status === 'removed' ? undefined : await source.loadFile(path, diff.head.sha)
   if (text === undefined)
     throw new ReviewError(404, `No text for ${path}`)
-  const rows = fullRows(file, text, colors)
+  const rows = fullRows(file, text, colors).slice(from)
   const [count] = rowsWithin(rows, ROW_BYTES)
   return count < rows.length ? { rows: rows.slice(0, count), truncated: true } : { rows }
 }

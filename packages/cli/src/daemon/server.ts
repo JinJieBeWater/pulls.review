@@ -12,7 +12,7 @@ import * as v from 'valibot'
 import { detectAgents } from '../agents'
 import { routeId } from './proxy'
 import { worktreeId, worktrees } from './registry'
-import { ColorsSchema, createReviewCaches, readFullFile, readReview, readStatus, ReviewError, setReviewed } from './review'
+import { ColorsSchema, createReviewCaches, readFullFile, readReview, readRows, readStatus, ReviewError, setReviewed } from './review'
 import { COMMAND, PWA_PROTOCOL } from './schema'
 import { COOKIE, createLaunchTokens, hasSession, requestGuard } from './security'
 import { agentChoice, defaultLocale, SharedSettingsSchema } from './settings'
@@ -122,7 +122,7 @@ export function createDaemonApp(options: {
   // The pane's review request names the files it wants rows for: a large group's paths outgrow 8 KB.
   const smallBody = bodyLimit(8192)
   const reviewBody = bodyLimit(256 * 1024)
-  app.use('/api/**', (event, next) => (event.url.pathname === '/api/review' ? reviewBody : smallBody)(event, next))
+  app.use('/api/**', (event, next) => (['/api/review', '/api/review/rows'].includes(event.url.pathname) ? reviewBody : smallBody)(event, next))
   app.post('/api/stop', () => {
     setTimeout(stop, 25)
     return { stopping: true }
@@ -224,6 +224,16 @@ export function createDaemonApp(options: {
     rows,
     firstRows,
   })))
+  app.post('/api/review/rows', event => review(event, v.object({ ...reviewSchema.entries, colors: ColorsSchema, files: v.pipe(v.array(v.string()), v.maxLength(5000)), base: v.string(), head: v.string(), from: v.optional(v.pipe(v.number(), v.integer(), v.minValue(0))) }), async ({ page, colors, files, base, head, from }, tree) => readRows({
+    cwd: tree.path,
+    page,
+    colors,
+    cache: await caches(tree.path),
+    files,
+    base,
+    head,
+    from,
+  })))
   app.post('/api/review/status', event => review(event, reviewSchema, async ({ page }, tree) => readStatus({ cwd: tree.path, page, running: running(tree) })))
   app.post('/api/review/analyze', event => review(event, v.object({ ...reviewSchema.entries, force: v.optional(v.boolean()) }), async ({ page, force }, tree) => {
     const choice = agentChoice(await settings.read())
@@ -238,7 +248,7 @@ export function createDaemonApp(options: {
     await setReviewed({ cwd: tree.path, page, cache: await caches(tree.path), shas, reviewed })
     return { reviewed }
   }))
-  app.post('/api/review/file', event => review(event, v.object({ ...reviewSchema.entries, file: v.string(), colors: ColorsSchema }), ({ page, file, colors }, tree) => readFullFile({ cwd: tree.path, page, path: file, colors })))
+  app.post('/api/review/file', event => review(event, v.object({ ...reviewSchema.entries, file: v.string(), colors: ColorsSchema, from: v.optional(v.pipe(v.number(), v.integer(), v.minValue(0))) }), ({ page, file, colors, from }, tree) => readFullFile({ cwd: tree.path, page, path: file, colors, from })))
   // The tab shell (plans/fork/02); each tab is a review under `/r/<id>/`.
   app.get('/', () => shell.page())
   app.get('/sw.js', () => new Response(SERVICE_WORKER, { headers: { 'Content-Type': 'text/javascript; charset=utf-8' } }))
