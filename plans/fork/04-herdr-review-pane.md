@@ -53,13 +53,14 @@ rest of `/api/*`. The body names a worktree by `path` (registered on first use, 
 - `POST /api/review` `{ path, page, colors, rows?, firstRows? }` returns the review. `rows` names the files
   whose highlighted rows come with it (all of them when left out): a large diff's rows run
   to megabytes, past the 8 MB a pane reads at once, so the pane asks for the files in view and
-  the next few, up to 3000 changed lines a read. `firstRows: true` adds the rows of the first
-  group's files (its own and its children's) while they fit in 3000 changed lines, the first one
-  always, so a pane that knows no group yet reads once, with `rows: []`. Every line is cut at
+  the next few. `firstRows: true` adds the rows of the first group's files (its own and its
+  children's), so a pane that knows no group yet reads once, with `rows: []`. Every line is cut at
   1000 columns, where the pane stops drawing. Rows come for those files in that order (`rows`,
-  then the first group's) while 4 MiB of their JSON lasts: a line's tokens can outweigh its text
-  many times. A file that doesn't fit whole comes without `hunks`, for a later read to ask for;
-  the first always comes, and one past 4 MiB by itself is cut there and marked `clipped`. The daemon fetches the
+  then the first group's) while one read's budget lasts: 4 MiB of their JSON, as a line's tokens
+  can outweigh its text many times, and 3000 rows and 10,000 tokens, which the pane builds in one
+  render that Herdr stops past about 50 ms. Real opens of a 1,554-file branch carry about that
+  many. A file that doesn't fit whole comes without `hunks`, for a later read to ask for; the
+  first always comes, and one past the budget by itself is cut there and marked `clipped`. The daemon fetches the
   page's diff with core's local source and, when it differs from the cached one (its head, or a
   range's base under the same head), stores it with `putDiff`, so the cache holds the diff last read, and `changedSinceReviewed` and the saved AI result follow
   the same rules as a page load. `colors` maps syntax kinds (`keyword`, `string`,
@@ -84,10 +85,11 @@ rest of `/api/*`. The body names a worktree by `path` (registered on first use, 
 - `POST /api/review/reviewed` `{ path, page, shas, reviewed }` sets reviewed marks and
   clears `changedSinceReviewed` for those files, as `DiffsStore.setReviewed` does.
 - `POST /api/review/file` `{ path, page, file, colors, from? }` returns `{ rows, truncated? }`, one
-  file's full new side, highlighted, for showing the whole file around its hunks; past 4 MiB of
-  rows it stops there, `truncated: true`, and `from` reads on from a row, a page at a time. Each
-  page highlights the whole file again: 85,000 minified lines take a third of a second a page. A working-tree file whose real path leaves the
-  worktree, through a symlink, has no text to show.
+  file's full new side, highlighted, for showing the whole file around its hunks; past one read's
+  budget (as `/api/review`'s rows) it stops there, `truncated: true`, and `from` reads on from a
+  row, a page at a time. Each page highlights the whole file again: 85,000 minified lines take a
+  third of a second a page. A symlink's text is its link text, as Git stores it; a working-tree
+  path under a directory whose real path leaves the worktree has no text to show.
 - `GET /api/agents` lists the agent CLIs on `PATH` with their versions and model catalogs,
   as the worktree server's `agent-list` does; the pane writes its pick, and the language the analysis
   writes in, with the shell's `PUT /api/settings`. Whether the pane starts an analysis by itself is the pane's own

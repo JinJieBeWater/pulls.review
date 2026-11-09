@@ -36,8 +36,8 @@ answers an unknown route with an error.
 
 - `POST /api/review` takes an optional `firstRows: boolean`. True: the rows of the first group's
   files (its own and its children's, as the pane's `groupFiles`) come as well as those named in
-  `rows`, while they fit in 3000 changed lines (the first file always). The pane sends `rows: []`
-  with it. Rows stop at 4 MiB of JSON as [plan 04](./04-herdr-review-pane.md) says.
+  `rows`. The pane sends `rows: []` with it. Rows stop at one read's budget (4 MiB of JSON, 3000
+  rows, 10,000 tokens; the first file always comes) as [plan 04](./04-herdr-review-pane.md) says.
 - After the open, a batch's rows, and the next page of a file cut short, come from
   `POST /api/review/rows` (plan 04), and a whole file's next page from `/api/review/file` with
   `from`. An older daemon answers the rows route with an error, and the pane reads the batch
