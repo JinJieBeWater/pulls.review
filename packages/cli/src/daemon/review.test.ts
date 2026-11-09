@@ -1,8 +1,9 @@
+import type { CacheRepositories } from '@pulls.review/core/cache'
 import type { DiffGroup, FileChange } from '@pulls.review/core/types'
 import type { ReviewFile } from './review'
 import { Buffer } from 'node:buffer'
 import { execFile } from 'node:child_process'
-import { mkdtemp, realpath, rm, writeFile } from 'node:fs/promises'
+import { mkdtemp, readFile, realpath, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import process from 'node:process'
@@ -249,15 +250,64 @@ it('has nothing to review once a range is empty, its analysis kept for when it i
   expect([empty.files, empty.groups, empty.source, empty.analysis.state]).toEqual([[], [], 'rule-based', 'none'])
 })
 
+/** The Diff and log runs among the Git commands `read` starts, from `GIT_TRACE`. */
+async function diffRuns(read: () => Promise<unknown>): Promise<string[]> {
+  const trace = join(root!, '.git', 'trace.log')
+  vi.stubEnv('GIT_TRACE', trace)
+  try {
+    await read()
+  }
+  finally {
+    vi.unstubAllEnvs()
+  }
+  const text = await readFile(trace, 'utf8').catch(() => '')
+  await rm(trace, { force: true })
+  return [...text.matchAll(/built-in: git (\S+)/g)].map(match => match[1]!).filter(command => command === 'diff' || command === 'log').sort()
+}
+
+it('serves a page from the cache while its shas still name it, once this process stored it, with no Git diff or log', async () => {
+  const { root, git } = await repo()
+  await git('branch', 'base')
+  await writeFile(join(root, 'a.ts'), 'const a = 2\n')
+  await git('commit', '-am', 'two')
+  const storage = createStorage()
+  const cache = createCacheRepositories(storage)
+  const read = (cache: CacheRepositories, page = '/compare/base...main') => readReview({ cwd: root, page, colors, cache, running: async () => ({}), agent: false, rows: [] })
+  expect(await diffRuns(() => read(cache))).toEqual(['diff', 'log'])
+  expect(await diffRuns(() => read(cache))).toEqual([])
+  expect(await diffRuns(() => readFullFile({ cwd: root, page: '/compare/base...main', path: 'a.ts', colors, cache }))).toEqual([])
+
+  // Restarted, as on an upgrade: a diff another version stored is read again and stored over, then served.
+  const { key, title } = await read(cache)
+  const entry = (await cache.diffs.get(key))!
+  await cache.diffs.put({ ...entry, diff: { ...entry.diff, title: 'planted' } })
+  const restarted = createCacheRepositories(storage)
+  expect((await read(restarted)).title).toBe(title)
+  expect(await diffRuns(() => read(restarted))).toEqual([])
+
+  // A new commit names another head.
+  await writeFile(join(root, 'a.ts'), 'const a = 3\n')
+  await git('commit', '-am', 'three')
+  expect(await diffRuns(() => read(restarted))).toEqual(['diff', 'log'])
+
+  // A..B's base moving under the same head is another diff too.
+  const before = await read(restarted, '/compare/base..main')
+  await git('branch', '-f', 'base', 'main~1')
+  let after = before
+  expect(await diffRuns(async () => after = await read(restarted, '/compare/base..main'))).toEqual(['diff', 'log'])
+  expect([after.head!.sha === before.head!.sha, after.base!.sha === before.base!.sha]).toEqual([true, false])
+})
+
 it('reads a file\'s whole new side for a commit page', async () => {
   const { root, git } = await repo()
   await writeFile(join(root, 'a.ts'), 'const a = 1\n/* one\n   two */\nexport { a, b }\n')
   await git('commit', '-am', 'export b')
   const sha = (await git('rev-parse', 'HEAD')).stdout.trim()
-  const { rows } = await readFullFile({ cwd: root, page: `/commit/${sha}`, path: 'a.ts', colors })
+  const cache = createCacheRepositories(createStorage())
+  const { rows } = await readFullFile({ cwd: root, page: `/commit/${sha}`, path: 'a.ts', colors, cache })
   expect(rows.map(row => row.kind).join('')).toBe('   -+')
   expect(await createLocalSource({ cwd: root, target: sha }).fingerprint()).toBe(sha)
-  await expect(readFullFile({ cwd: root, page: `/commit/${sha}`, path: 'nope.ts', colors })).rejects.toThrow('not in this review')
+  await expect(readFullFile({ cwd: root, page: `/commit/${sha}`, path: 'nope.ts', colors, cache })).rejects.toThrow('not in this review')
 })
 
 // Herdr reads at most 8 MiB a response; the cases the audit measured past it.
@@ -284,7 +334,7 @@ it('keeps a read\'s rows under what Herdr reads, cutting a file too big by itsel
   const big = await read(['a.js'])
   const file = big.files.find(file => file.path === 'a.js')!
   expect([bytes(big) < LIMIT, file.clipped, file.hunks![0]!.rows.length < 170000]).toEqual([true, true, true])
-  const whole = await readFullFile({ cwd: root, page: '/worktree', path: 'a.js', colors })
+  const whole = await readFullFile({ cwd: root, page: '/worktree', path: 'a.js', colors, cache })
   expect([bytes(whole) < LIMIT, whole.truncated]).toEqual([true, true])
 }, 60_000)
 
@@ -304,17 +354,18 @@ it('stops a read at 3000 rows and 10,000 tokens, which the pane builds in one re
   expect(b.clipped).toBe(true)
   expect(rowsOf(b).reduce((n, row) => n + row.tokens.length, 0)).toBeLessThanOrEqual(10_000)
   expect(rowsOf(b).length).toBeGreaterThan(0)
-  const whole = await readFullFile({ cwd: root, page: '/worktree', path: 'a.js', colors: pageColors })
+  const whole = await readFullFile({ cwd: root, page: '/worktree', path: 'a.js', colors: pageColors, cache })
   expect([whole.rows.length, whole.truncated]).toEqual([3000, true])
 })
 
 it('cuts a whole file past what Herdr reads, and marks it truncated', async () => {
   const { root } = await repo()
   await writeFile(join(root, 'a.txt'), `${'x'.repeat(1000)}\n`.repeat(9000))
-  const whole = await readFullFile({ cwd: root, page: '/worktree', path: 'a.txt', colors })
+  const cache = createCacheRepositories(createStorage())
+  const whole = await readFullFile({ cwd: root, page: '/worktree', path: 'a.txt', colors, cache })
   expect([bytes(whole) < LIMIT, whole.truncated, whole.rows.length > 1000]).toEqual([true, true, true])
   await writeFile(join(root, 'a.txt'), 'x\n')
-  expect(await readFullFile({ cwd: root, page: '/worktree', path: 'a.txt', colors })).not.toHaveProperty('truncated')
+  expect(await readFullFile({ cwd: root, page: '/worktree', path: 'a.txt', colors, cache })).not.toHaveProperty('truncated')
 })
 
 it('reads only the asked files\' rows from the diff the pane shows, and says when that isn\'t the one cached', async () => {
@@ -360,7 +411,7 @@ it('pages a file too big for one read, by itself and as a whole file, end to end
   const whole: number[] = []
   for (let truncated: true | undefined = true, pages = 0; truncated; pages++) {
     expect(pages).toBeLessThan(60)
-    const next = await readFullFile({ cwd: root, page, path: 'a.js', colors: pageColors, from: whole.length })
+    const next = await readFullFile({ cwd: root, page, path: 'a.js', colors: pageColors, cache, from: whole.length })
     expect(bytes(next)).toBeLessThan(LIMIT)
     whole.push(...next.rows.map(row => row.new!))
     truncated = next.truncated

@@ -1,5 +1,6 @@
 import type { Lang, Theme } from '@pierre/highlights'
-import type { CacheRepositories } from '@pulls.review/core/cache'
+import type { CacheRepositories, PrCacheEntry } from '@pulls.review/core/cache'
+import type { LocalSource } from '@pulls.review/core/local'
 import type { DiffGroup, DiffGroupLeaf, DiffHunk, DiffSide, DiffsPayload, FileChange, GroupSource } from '@pulls.review/core/types'
 import type { RunningState } from './schema'
 import { Buffer } from 'node:buffer'
@@ -227,8 +228,18 @@ export function resolveGroups(groups: DiffGroup[], files: FileChange[]): ReviewG
 /** One repository's cache, shared by its worktrees as `<git-common-dir>/pulls-review` is. */
 export function createReviewCaches() {
   const caches = new Map<string, Promise<CacheRepositories>>()
+  // A registered worktree's common dir doesn't move: found once, not one Git a read. A failure is asked again.
+  const dirs = new Map<string, Promise<string>>()
   return async (cwd: string): Promise<CacheRepositories> => {
-    const dir = await repoCacheDir(cwd)
+    let found = dirs.get(cwd)
+    if (!found) {
+      found = repoCacheDir(cwd).catch((error) => {
+        dirs.delete(cwd)
+        throw error
+      })
+      dirs.set(cwd, found)
+    }
+    const dir = await found
     let cache = caches.get(dir)
     if (!cache) {
       cache = createRepoCaches(cwd)
@@ -339,6 +350,35 @@ function servedRows(paths: string[], files: FileChange[], colors: Colors, from =
   return served
 }
 
+/**
+ * Per cache, the diffs this process stored, `key\0base\0head`. Only they are served without a fetch: a diff another
+ * daemon version stored, with another parser or cut, is read again once a process and stored over.
+ */
+const stored = new WeakMap<CacheRepositories, Set<string>>()
+
+/**
+ * A page's diff, as cached while its base and head shas still name it, with no Git diff or log; else fetched and stored,
+ * a range's base moving under the same head too. The working tree has no sha before its diff, so it is always fetched.
+ */
+async function pageEntry(source: LocalSource, cache: CacheRepositories): Promise<{ key: string, entry: PrCacheEntry }> {
+  const [key, at] = await Promise.all([source.key(), source.revisions()])
+  let seen = stored.get(cache)
+  if (!seen)
+    stored.set(cache, seen = new Set())
+  const cached = await cache.diffs.get(key)
+  const holds = (base: string | undefined, head: string) => cached?.headSha === head && cached.diff.base?.sha === base && seen.has(`${key}\0${base}\0${head}`)
+  // A hit is a view too: eviction goes by `lastViewedAt`, and a page read often must outlast one read once.
+  if (at.head && holds(at.base, at.head)) {
+    await cache.diffs.touch(key)
+    return { key, entry: cached! }
+  }
+  const diff = await source.fetch()
+  const head = diff.head?.sha ?? ''
+  const entry = holds(diff.base?.sha, head) ? (await cache.diffs.touch(key), cached!) : await cache.diffs.putDiff(key, diff, head)
+  seen.add(`${key}\0${diff.base?.sha}\0${head}`)
+  return { key, entry }
+}
+
 export async function readReview(options: {
   cwd: string
   page: string
@@ -353,12 +393,10 @@ export async function readReview(options: {
 }): Promise<Review> {
   const { cwd, page, colors, cache, running, agent } = options
   const source = createLocalSource({ cwd, target: await pageTarget(cwd, page) })
-  const [key, diff] = await Promise.all([source.key(), source.fetch()])
+  // The cache then holds the diff last read, which `readRows` serves.
+  const { key, entry } = await pageEntry(source, cache)
+  const { diff } = entry
   const head = diff.head?.sha ?? ''
-  const cached = await cache.diffs.get(key)
-  // A hit is a view too: eviction goes by `lastViewedAt`, and a page read often must outlast one read once.
-  // A range's base can move under the same head: stored then too, the cache holds the diff last read, which `readRows` serves.
-  const entry = cached?.headSha === head && cached.diff.base?.sha === diff.base?.sha ? (await cache.diffs.touch(key), cached) : await cache.diffs.putDiff(key, diff, head)
   // A run that can't be asked about isn't over: the read still shows the page, with why the state is unknown.
   const [reviewed, run] = await Promise.all([cache.reviewMarks.get(diff.files.map(file => file.sha)), running(key).catch((error): RunningState => ({ error: `Can't tell whether an analysis runs: ${error instanceof Error ? error.message : error}` }))])
   // A range's key outlives its commits: with none of its files left, the analysis was of other files.
@@ -430,10 +468,10 @@ export async function setReviewed(options: { cwd: string, page: string, cache: C
  * what one read carries (`Budget`), the rest for a read from where it stops.
  * shortcut: each page highlights the whole file again (a 170,000-line one takes seconds); keep its tokens if paging drags.
  */
-export async function readFullFile(options: { cwd: string, page: string, path: string, colors: Colors, from?: number }): Promise<{ rows: Row[], truncated?: true }> {
-  const { cwd, page, path, colors, from = 0 } = options
+export async function readFullFile(options: { cwd: string, page: string, path: string, colors: Colors, cache: CacheRepositories, from?: number }): Promise<{ rows: Row[], truncated?: true }> {
+  const { cwd, page, path, colors, cache, from = 0 } = options
   const source = createLocalSource({ cwd, target: await pageTarget(cwd, page) })
-  const diff = await source.fetch()
+  const { diff } = (await pageEntry(source, cache)).entry
   const file = diff.files.find(candidate => candidate.path === path)
   if (!file || !diff.head)
     throw new ReviewError(404, `${path} is not in this review`)

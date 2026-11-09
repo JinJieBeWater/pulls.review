@@ -248,7 +248,7 @@ export function createDaemonApp(options: {
     await setReviewed({ cwd: tree.path, page, cache: await caches(tree.path), shas, reviewed })
     return { reviewed }
   }))
-  app.post('/api/review/file', event => review(event, v.object({ ...reviewSchema.entries, file: v.string(), colors: ColorsSchema, from: v.optional(v.pipe(v.number(), v.integer(), v.minValue(0))) }), ({ page, file, colors, from }, tree) => readFullFile({ cwd: tree.path, page, path: file, colors, from })))
+  app.post('/api/review/file', event => review(event, v.object({ ...reviewSchema.entries, file: v.string(), colors: ColorsSchema, from: v.optional(v.pipe(v.number(), v.integer(), v.minValue(0))) }), async ({ page, file, colors, from }, tree) => readFullFile({ cwd: tree.path, page, path: file, colors, cache: await caches(tree.path), from })))
   // The tab shell (plans/fork/02); each tab is a review under `/r/<id>/`.
   app.get('/', () => shell.page())
   app.get('/sw.js', () => new Response(SERVICE_WORKER, { headers: { 'Content-Type': 'text/javascript; charset=utf-8' } }))
