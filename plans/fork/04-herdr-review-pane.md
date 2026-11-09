@@ -56,7 +56,10 @@ rest of `/api/*`. The body names a worktree by `path` (registered on first use, 
   the next few, up to 3000 changed lines a read. `firstRows: true` adds the rows of the first
   group's files (its own and its children's) while they fit in 3000 changed lines, the first one
   always, so a pane that knows no group yet reads once, with `rows: []`. Every line is cut at
-  1000 columns, where the pane stops drawing. The daemon fetches the
+  1000 columns, where the pane stops drawing. Rows come for those files in that order (`rows`,
+  then the first group's) while 4 MiB of their JSON lasts: a line's tokens can outweigh its text
+  many times. A file that doesn't fit whole comes without `hunks`, for a later read to ask for;
+  the first always comes, and one past 4 MiB by itself is cut there and marked `clipped`. The daemon fetches the
   page's diff with core's local source and, when it differs from the cached one,
   stores it with `putDiff`, so `changedSinceReviewed` and the saved AI result follow
   the same rules as a page load. `colors` maps syntax kinds (`keyword`, `string`,
@@ -67,12 +70,15 @@ rest of `/api/*`. The body names a worktree by `path` (registered on first use, 
   server, as `-d --analyze` does (plan 03); a run already going is followed, not doubled.
 - `POST /api/review/status` `{ path, page }` returns `{ running, progress?, error? }` for the
   page's analysis, from the page's key and the worktree server, without reading the diff; with no
-  worktree server started yet, `{ running: false }`. The pane polls it while a run goes and reads
-  the review once the run stops.
+  worktree server started yet, `{ running: false }`; a server that doesn't answer is an error,
+  not a stopped run, and the review then says why in `analysis.error`. The pane polls it while a
+  run goes and reads the review once the run stops.
 - `POST /api/review/reviewed` `{ path, page, shas, reviewed }` sets reviewed marks and
   clears `changedSinceReviewed` for those files, as `DiffsStore.setReviewed` does.
-- `POST /api/review/file` `{ path, page, file, colors }` returns one file's full new
-  side, highlighted, for showing the whole file around its hunks.
+- `POST /api/review/file` `{ path, page, file, colors }` returns `{ rows, truncated? }`, one
+  file's full new side, highlighted, for showing the whole file around its hunks; past 4 MiB of
+  rows it stops there, `truncated: true`. A working-tree file whose real path leaves the
+  worktree, through a symlink, has no text to show.
 - `GET /api/agents` lists the agent CLIs on `PATH` with their versions and model catalogs,
   as the worktree server's `agent-list` does; the pane writes its pick, and the language the analysis
   writes in, with the shell's `PUT /api/settings`. Whether the pane starts an analysis by itself is the pane's own
@@ -108,6 +114,18 @@ Rule-based group text is English: the pane has no locale of its own.
 The worktree server (`daemon/child.ts`) owns the runs. The daemon asks it over IPC which
 run is going for a cache key; `agent-running` also returns the run's latest progress
 event and, once the last run for the key failed, its error, so the pane can say why.
+
+## Cache writes
+
+The daemon and every worktree server open the repo's one cache (`<git-common-dir>/pulls-review`)
+in their own process, and each change to an entry reads it, merges, and writes it back. The
+diff cache's in-process queue can't order two processes, so a pane's refetch could write back
+an entry read before a run saved its analysis and session, dropping both. Every entry write
+(`putDiff`, `touch`, the analysis, the session) now holds a lock per cache key that processes
+share: a directory under `pulls-review/locks/`, which `mkdir` creates or fails at once, taken
+over once 30 s old as a crashed holder's. A refetch then waits for a save under way and merges
+onto it, or the save waits and lands on the new diff. The browser's own writes, which go through
+the worktree server as raw storage calls, still aren't covered (`agents/rpc.ts` says so).
 
 ## Open
 
