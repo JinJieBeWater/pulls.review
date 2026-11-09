@@ -6,6 +6,7 @@ import { Buffer } from 'node:buffer'
 import { codeToTokens, isSupportedLanguage } from '@pierre/highlights'
 import { createRuleBasedAdapter, GENERATED_PATTERNS, TEST_PATTERNS } from '@pulls.review/core/analyze'
 import { createLocalSource } from '@pulls.review/core/local'
+import { serializeRef } from '@pulls.review/core/types'
 import picomatch from 'picomatch'
 import * as v from 'valibot'
 import { createRepoCaches, repoCacheDir } from '../storage'
@@ -257,9 +258,9 @@ export async function pageTarget(cwd: string, page: string): Promise<string> {
   return target
 }
 
-/** A page's cache key, which needs no diff. */
+/** A page's cache key, which needs no diff. `cwd` is the registry's worktree root, canonical as Git's `--show-toplevel`. */
 async function pageKey(cwd: string, page: string): Promise<string> {
-  return createLocalSource({ cwd, target: await pageTarget(cwd, page) }).key()
+  return serializeRef({ kind: 'local', repo: cwd, target: await pageTarget(cwd, page) })
 }
 
 export class ReviewError extends Error {

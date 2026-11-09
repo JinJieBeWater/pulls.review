@@ -1,7 +1,7 @@
 import type { DiffGroup, FileChange } from '@pulls.review/core/types'
 import { Buffer } from 'node:buffer'
 import { execFile } from 'node:child_process'
-import { mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { mkdtemp, realpath, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import process from 'node:process'
@@ -21,7 +21,8 @@ afterEach(async () => {
 })
 
 async function repo() {
-  root = await mkdtemp(join(tmpdir(), 'pulls-review-pane-'))
+  // Canonical, as the registry passes a worktree's root.
+  root = await realpath(await mkdtemp(join(tmpdir(), 'pulls-review-pane-')))
   const env = { ...process.env, HOME: root, GIT_CONFIG_NOSYSTEM: '1' }
   const git = (...args: string[]) => exec('git', ['-c', 'user.name=Test', '-c', 'user.email=test@example.com', ...args], { cwd: root, env })
   await git('init', '-b', 'main')
@@ -122,7 +123,14 @@ it('says whether a page\'s analysis runs from its key, without reading the diff'
   }
   expect(await readStatus({ cwd: root, page: '/worktree', running })).toEqual({ running: true, progress: { step: 2, kind: 'thinking' } })
   expect(asked).toEqual([key])
-  expect(await readStatus({ cwd: root, page: '/worktree', running: async () => ({ error: 'failed' }) })).toEqual({ running: false, error: 'failed' })
+  // The root comes canonical from the registry, so a poll starts no Git.
+  vi.stubEnv('PATH', '/nonexistent')
+  try {
+    expect(await readStatus({ cwd: root, page: '/worktree', running: async () => ({ error: 'failed' }) })).toEqual({ running: false, error: 'failed' })
+  }
+  finally {
+    vi.unstubAllEnvs()
+  }
   // A range git can't resolve: its diff can't be read, its key can.
   await expect(readReview({ cwd: root, page: '/compare/nope...gone', colors, cache, running: async () => ({}), agent: false })).rejects.toThrow()
   expect(await readStatus({ cwd: root, page: '/compare/nope...gone', running: async () => ({}) })).toEqual({ running: false })

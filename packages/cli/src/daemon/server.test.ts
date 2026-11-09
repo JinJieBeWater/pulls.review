@@ -4,7 +4,7 @@ import type { CommitEvent } from './commits'
 import type { Worktree } from './schema'
 import type { SharedSettings } from './settings'
 import { execFileSync } from 'node:child_process'
-import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, realpathSync, writeFileSync } from 'node:fs'
 import { rm } from 'node:fs/promises'
 import { createServer, request } from 'node:http'
 import { tmpdir } from 'node:os'
@@ -190,7 +190,8 @@ it('answers the Herdr pane: validates its requests, says why it cannot analyze, 
 
 it('gives the pane an open\'s first group in one read, and a run\'s status without reading the diff', async () => {
   const { call, options, registry, children } = await fixture()
-  const root = mkdtempSync(join(tmpdir(), 'pulls-daemon-status-'))
+  // Canonical, as the registry holds a worktree's root.
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'pulls-daemon-status-')))
   cleanup.push(() => rm(root, { recursive: true, force: true }))
   const git = (...args: string[]) => execFileSync('git', ['-c', 'user.name=Test', '-c', 'user.email=test@example.com', ...args], { cwd: root, env: { ...process.env, HOME: root, GIT_CONFIG_NOSYSTEM: '1' } })
   git('init', '-b', 'main')
