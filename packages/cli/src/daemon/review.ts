@@ -304,13 +304,14 @@ export async function readReview(options: {
   const cached = await cache.diffs.get(key)
   const entry = cached?.headSha === head ? cached : await cache.diffs.putDiff(key, diff, head)
   const [reviewed, run] = await Promise.all([cache.reviewMarks.get(diff.files.map(file => file.sha)), running(key)])
-  // A range's key outlives its commits: with no group left, the analysis was of other files.
+  // A range's key outlives its commits: with none of its files left, the analysis was of other files.
   // shortcut: a base moved partway keeps the analysis current, pushed files shown missing; stamp the base if that misleads.
-  const fromLlm = entry.analyzedBy.llm && resolveGroups(entry.analyzedBy.llm.groups, diff.files)
-  const llm = fromLlm?.some(group => group.key !== UNCATEGORIZED) ? entry.analyzedBy.llm : undefined
+  const paths = new Set(diff.files.flatMap(file => file.previousPath ? [file.path, file.previousPath] : [file.path]))
+  const saved = entry.analyzedBy.llm
+  const llm = saved?.groups.some(group => [group, ...group.children ?? []].some(leaf => leaf.filePaths.some(path => paths.has(path)))) ? saved : undefined
   const changed = new Set(entry.changedSinceReviewed)
   const state: AnalysisState = run.streamId ? 'running' : !llm ? 'none' : llm.headSha === head ? 'current' : 'outdated'
-  const resolved = llm ? fromLlm! : resolveGroups((await ruleBased.analyze(diff)).groups, diff.files)
+  const resolved = resolveGroups(llm ? llm.groups : (await ruleBased.analyze(diff)).groups, diff.files)
   const first = options.firstRows ? resolved[0] : undefined
   const wanted = options.rows && new Set([...options.rows, ...first ? firstRowFiles(first, diff.files) : []])
   return {

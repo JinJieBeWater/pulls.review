@@ -184,6 +184,17 @@ it('shows no analysis once a range holds none of its files, as after a push and 
   expect([other.files.map(f => f.path), other.source, other.analysis.state, other.groups.some(group => group.key === 'x')]).toEqual([['a.test.ts'], 'rule-based', 'none', false])
 })
 
+it('keeps an analysis whose own group is keyed uncategorized: its files decide, not its keys', async () => {
+  const { root } = await repo()
+  const cache = createCacheRepositories(createStorage())
+  const read = () => readReview({ cwd: root, page: '/worktree', colors, cache, running: async () => ({}), agent: false })
+  await writeFile(join(root, 'a.ts'), 'const a = 2\n')
+  const { key, head } = await read()
+  await cache.diffs.setAnalyzedResult(key, 'llm', { source: 'llm', groups: [{ key: 'uncategorized', label: 'Odds and ends', category: 'core', filePaths: ['a.ts'] }], schemaVersion: 1, generatedAt: 'now', headSha: head!.sha, model: 'pi/m' })
+  const shown = await read()
+  expect([shown.source, shown.analysis.state, shown.groups.map(group => group.label)]).toEqual(['llm', 'current', ['Odds and ends']])
+})
+
 it('has nothing to review once a range is empty, its analysis kept for when it isn\'t', async () => {
   const { root, git } = await repo()
   await git('branch', 'pushed')
