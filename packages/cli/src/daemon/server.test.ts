@@ -218,6 +218,12 @@ it('gives the pane an open\'s first group in one read, and a run\'s status witho
   expect(running).toHaveBeenCalledWith(opened.key)
   expect(children.peek).toHaveBeenCalledWith(tree)
   expect((await post('/api/review/status', { page: '/elsewhere' })).status).toBe(400)
+
+  // A server that doesn't answer: the status is an error, not a finished run, and a read says why.
+  running.mockRejectedValue(new Error('Worktree server did not answer'))
+  const lost = await post('/api/review/status', { page: '/worktree' })
+  expect([lost.status, await lost.text()]).toEqual([500, 'Worktree server did not answer'])
+  expect((await (await post('/api/review', { page: '/worktree', colors: {}, rows: [] })).json()).analysis.error).toBe('Can\'t tell whether an analysis runs: Worktree server did not answer')
 })
 
 it('exchanges a PWA launch token for a cookie and page without navigating the shell', async () => {

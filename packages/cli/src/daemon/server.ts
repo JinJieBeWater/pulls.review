@@ -64,9 +64,9 @@ export function createDaemonApp(options: {
     return tree
   }
 
-  /** The analysis running for a cache key in a worktree; no server started yet: nothing can be running. */
+  /** The analysis running for a cache key in a worktree; no server started yet: nothing can be running. A server that can't say is a failure, not "not running". */
   function running(tree: Worktree) {
-    return (key: string) => Promise.resolve(children.peek(tree)).then(server => server?.running(key) ?? {}).catch(() => ({}))
+    return (key: string) => Promise.resolve(children.peek(tree)).then(server => server?.running(key) ?? {})
   }
 
   /** A pane request: its body checked, its worktree found; a failure answers with its message for the pane to show. */

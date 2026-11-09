@@ -304,7 +304,8 @@ export async function readReview(options: {
   const cached = await cache.diffs.get(key)
   // A hit is a view too: eviction goes by `lastViewedAt`, and a page read often must outlast one read once.
   const entry = cached?.headSha === head ? (await cache.diffs.touch(key), cached) : await cache.diffs.putDiff(key, diff, head)
-  const [reviewed, run] = await Promise.all([cache.reviewMarks.get(diff.files.map(file => file.sha)), running(key)])
+  // A run that can't be asked about isn't over: the read still shows the page, with why the state is unknown.
+  const [reviewed, run] = await Promise.all([cache.reviewMarks.get(diff.files.map(file => file.sha)), running(key).catch((error): RunningState => ({ error: `Can't tell whether an analysis runs: ${error instanceof Error ? error.message : error}` }))])
   // A range's key outlives its commits: with none of its files left, the analysis was of other files.
   // shortcut: a base moved partway keeps the analysis current, pushed files shown missing; stamp the base if that misleads.
   const paths = new Set(diff.files.flatMap(file => file.previousPath ? [file.path, file.previousPath] : [file.path]))
