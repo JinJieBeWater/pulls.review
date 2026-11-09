@@ -8,7 +8,7 @@ import { promisify } from 'node:util'
 import { createCacheRepositories } from '@pulls.review/core/cache'
 import { createLocalSource } from '@pulls.review/core/local'
 import { createStorage } from 'unstorage'
-import { afterEach, expect, it } from 'vitest'
+import { afterEach, expect, it, vi } from 'vitest'
 import { fullRows, hunkRows, readFullFile, readReview, readStatus, resolveGroups, setReviewed } from './review'
 
 const exec = promisify(execFile)
@@ -193,6 +193,34 @@ it('keeps an analysis whose own group is keyed uncategorized: its files decide, 
   await cache.diffs.setAnalyzedResult(key, 'llm', { source: 'llm', groups: [{ key: 'uncategorized', label: 'Odds and ends', category: 'core', filePaths: ['a.ts'] }], schemaVersion: 1, generatedAt: 'now', headSha: head!.sha, model: 'pi/m' })
   const shown = await read()
   expect([shown.source, shown.analysis.state, shown.groups.map(group => group.label)]).toEqual(['llm', 'current', ['Odds and ends']])
+})
+
+it('evicts the page read least lately, a cached page\'s read counting as one', async () => {
+  const { root, git } = await repo()
+  const sha = async () => (await git('rev-parse', 'HEAD')).stdout.trim()
+  const shas = [await sha()]
+  for (const text of ['2', '3']) {
+    await writeFile(join(root, 'a.ts'), `const a = ${text}\n`)
+    await git('commit', '-am', text)
+    shas.push(await sha())
+  }
+  const cache = createCacheRepositories(createStorage(), { maxEntries: 2 })
+  const read = (page: string) => readReview({ cwd: root, page, colors, cache, running: async () => ({}), agent: false, rows: [] })
+  vi.useFakeTimers({ toFake: ['Date'] })
+  try {
+    const at = async (time: number, page: string) => {
+      vi.setSystemTime(time)
+      return (await read(page)).key
+    }
+    const worktree = await at(1000, '/worktree')
+    const a = await at(2000, `/commit/${shas[1]}`)
+    await at(3000, '/worktree')
+    await at(4000, `/commit/${shas[2]}`)
+    expect([!!await cache.diffs.get(worktree), !!await cache.diffs.get(a)]).toEqual([true, false])
+  }
+  finally {
+    vi.useRealTimers()
+  }
 })
 
 it('has nothing to review once a range is empty, its analysis kept for when it isn\'t', async () => {

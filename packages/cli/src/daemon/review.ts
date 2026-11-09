@@ -302,7 +302,8 @@ export async function readReview(options: {
   const [key, diff] = await Promise.all([source.key(), source.fetch()])
   const head = diff.head?.sha ?? ''
   const cached = await cache.diffs.get(key)
-  const entry = cached?.headSha === head ? cached : await cache.diffs.putDiff(key, diff, head)
+  // A hit is a view too: eviction goes by `lastViewedAt`, and a page read often must outlast one read once.
+  const entry = cached?.headSha === head ? (await cache.diffs.touch(key), cached) : await cache.diffs.putDiff(key, diff, head)
   const [reviewed, run] = await Promise.all([cache.reviewMarks.get(diff.files.map(file => file.sha)), running(key)])
   // A range's key outlives its commits: with none of its files left, the analysis was of other files.
   // shortcut: a base moved partway keeps the analysis current, pushed files shown missing; stamp the base if that misleads.
