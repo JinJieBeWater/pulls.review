@@ -1,4 +1,5 @@
 import type { DiffGroup, FileChange } from '@pulls.review/core/types'
+import { Buffer } from 'node:buffer'
 import { execFile } from 'node:child_process'
 import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
@@ -244,8 +245,44 @@ it('reads a file\'s whole new side for a commit page', async () => {
   await writeFile(join(root, 'a.ts'), 'const a = 1\n/* one\n   two */\nexport { a, b }\n')
   await git('commit', '-am', 'export b')
   const sha = (await git('rev-parse', 'HEAD')).stdout.trim()
-  const rows = await readFullFile({ cwd: root, page: `/commit/${sha}`, path: 'a.ts', colors })
+  const { rows } = await readFullFile({ cwd: root, page: `/commit/${sha}`, path: 'a.ts', colors })
   expect(rows.map(row => row.kind).join('')).toBe('   -+')
   expect(await createLocalSource({ cwd: root, target: sha }).fingerprint()).toBe(sha)
   await expect(readFullFile({ cwd: root, page: `/commit/${sha}`, path: 'nope.ts', colors })).rejects.toThrow('not in this review')
+})
+
+// Herdr reads at most 8 MiB a response; the cases the audit measured past it.
+const LIMIT = 8 * 1024 * 1024
+const bytes = (value: unknown) => Buffer.byteLength(JSON.stringify(value))
+
+it('keeps a read\'s rows under what Herdr reads, cutting a file too big by itself and leaving the rest for a later read', async () => {
+  const { root } = await repo()
+  // Each line is a run of tokens: 1000 lines weigh about 3.5 MB of JSON.
+  for (const name of ['a.js', 'b.js', 'c.js'])
+    await writeFile(join(root, name), `${'1+'.repeat(160)}1\n`.repeat(1000))
+  const cache = createCacheRepositories(createStorage())
+  const read = (rows: string[], firstRows = false) => readReview({ cwd: root, page: '/worktree', colors: { ...colors, number: '#d19a66' }, cache, running: async () => ({}), agent: false, rows, firstRows })
+  const opened = await read([], true)
+  expect(bytes(opened)).toBeLessThan(LIMIT)
+  expect(opened.files.filter(file => file.hunks).map(file => [file.path, file.clipped ?? false])).toEqual([['a.js', false]])
+  const asked = await read(['b.js', 'c.js'])
+  expect(bytes(asked)).toBeLessThan(LIMIT)
+  expect(asked.files.filter(file => file.hunks).map(file => file.path)).toEqual(['b.js'])
+
+  // One file of 170,000 short lines: by itself past the limit, so cut and marked, and its whole side read without overflowing the stack.
+  await writeFile(join(root, 'a.js'), '1\n'.repeat(170000))
+  const big = await read(['a.js'])
+  const file = big.files.find(file => file.path === 'a.js')!
+  expect([bytes(big) < LIMIT, file.clipped, file.hunks![0]!.rows.length < 170000]).toEqual([true, true, true])
+  const whole = await readFullFile({ cwd: root, page: '/worktree', path: 'a.js', colors })
+  expect([bytes(whole) < LIMIT, whole.truncated]).toEqual([true, true])
+}, 60_000)
+
+it('cuts a whole file past what Herdr reads, and marks it truncated', async () => {
+  const { root } = await repo()
+  await writeFile(join(root, 'a.txt'), `${'x'.repeat(1000)}\n`.repeat(9000))
+  const whole = await readFullFile({ cwd: root, page: '/worktree', path: 'a.txt', colors })
+  expect([bytes(whole) < LIMIT, whole.truncated, whole.rows.length > 1000]).toEqual([true, true, true])
+  await writeFile(join(root, 'a.txt'), 'x\n')
+  expect(await readFullFile({ cwd: root, page: '/worktree', path: 'a.txt', colors })).not.toHaveProperty('truncated')
 })

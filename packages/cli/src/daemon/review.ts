@@ -2,6 +2,7 @@ import type { Lang, Theme } from '@pierre/highlights'
 import type { CacheRepositories } from '@pulls.review/core/cache'
 import type { DiffGroup, DiffGroupLeaf, DiffHunk, DiffSide, DiffsPayload, FileChange, GroupSource } from '@pulls.review/core/types'
 import type { RunningState } from './schema'
+import { Buffer } from 'node:buffer'
 import { codeToTokens, isSupportedLanguage } from '@pierre/highlights'
 import { createRuleBasedAdapter, GENERATED_PATTERNS, TEST_PATTERNS } from '@pulls.review/core/analyze'
 import { createCacheRepositories } from '@pulls.review/core/cache'
@@ -51,6 +52,8 @@ export interface ReviewFile extends Omit<FileChange, 'hunks'> {
   test: boolean
   /** Left out unless asked for (`rows`): a large diff's rows run to megabytes. */
   hunks?: { header: string, rows: Row[] }[]
+  /** Its rows stop early: by themselves they ran past what one read carries (ROW_BYTES). */
+  clipped?: true
 }
 export type AnalysisState = 'none' | 'current' | 'outdated' | 'running'
 
@@ -139,8 +142,10 @@ export function fullRows(file: Pick<FileChange, 'path' | 'hunks'>, text: string,
   }
   for (const hunk of [...file.hunks].sort((a, b) => a.newStart - b.newStart)) {
     context(hunk.newLines ? hunk.newStart : hunk.newStart + 1)
-    // The new side's tokens come from the whole file, which reads each line in context.
-    rows.push(...hunkRows(hunk, file.path, colors).map(row => row.new ? { ...row, tokens: lines[row.new - 1] ?? row.tokens } : row))
+    // The new side's tokens come from the whole file, which reads each line in context. One push a row: a spread of a
+    // hunk's rows passes as many arguments, past the stack for a file of a few hundred thousand lines.
+    for (const row of hunkRows(hunk, file.path, colors))
+      rows.push(row.new ? { ...row, tokens: lines[row.new - 1] ?? row.tokens } : row)
     // An empty side's start is the line before it.
     next = hunk.newStart + hunk.newLines + (hunk.newLines ? 0 : 1)
     offset = hunk.oldStart + hunk.oldLines + (hunk.oldLines ? 0 : 1) - next
@@ -285,6 +290,66 @@ function firstRowFiles(group: ReviewGroup, files: FileChange[]): string[] {
   return out
 }
 
+/**
+ * Where a read's rows stop, in bytes of JSON: Herdr reads at most 8 MiB, and a line's tokens can outweigh its text many times.
+ * shortcut: the page's files and groups aren't counted; a page of 10,000 files takes about 4 MiB of them, count them if one comes near.
+ */
+const ROW_BYTES = 4 * 1024 * 1024
+
+/** How many of `rows`, from the first, fit in `budget` bytes of JSON, and the bytes they take. */
+function rowsWithin(rows: Row[], budget: number): [count: number, bytes: number] {
+  let bytes = 0
+  for (const [index, row] of rows.entries()) {
+    const size = Buffer.byteLength(JSON.stringify(row)) + 1
+    if (bytes + size > budget)
+      return [index, bytes]
+    bytes += size
+  }
+  return [rows.length, bytes]
+}
+
+/** A file's rows while `budget` bytes last, the bytes they take, and whether that cut them short. */
+function fileRows(file: FileChange, colors: Colors, budget: number): { hunks: NonNullable<ReviewFile['hunks']>, bytes: number, clipped: boolean } {
+  const hunks: NonNullable<ReviewFile['hunks']> = []
+  let used = 0
+  for (const hunk of file.hunks) {
+    const rows = hunkRows(hunk, file.path, colors)
+    const header = Buffer.byteLength(JSON.stringify(hunk.header)) + 24
+    const [count, bytes] = rowsWithin(rows, budget - used - header)
+    if (count < rows.length) {
+      if (count)
+        hunks.push({ header: hunk.header, rows: rows.slice(0, count) })
+      return { hunks, bytes: used + header + bytes, clipped: true }
+    }
+    hunks.push({ header: hunk.header, rows })
+    used += header + bytes
+  }
+  return { hunks, bytes: used, clipped: false }
+}
+
+/**
+ * The rows of `paths`, in order, each file whole while ROW_BYTES lasts: the files past it get none, for a later read.
+ * The first is cut there instead, `clipped`: by itself it can run past what a read carries.
+ */
+function servedRows(paths: string[], files: FileChange[], colors: Colors): Map<string, Pick<ReviewFile, 'hunks' | 'clipped'>> {
+  const byPath = new Map(files.map(file => [file.path, file]))
+  const served = new Map<string, Pick<ReviewFile, 'hunks' | 'clipped'>>()
+  let left = ROW_BYTES
+  for (const path of new Set(paths)) {
+    const file = byPath.get(path)
+    if (!file)
+      continue
+    const { hunks, bytes, clipped } = fileRows(file, colors, left)
+    if (clipped && served.size)
+      break
+    served.set(path, clipped ? { hunks, clipped: true } : { hunks })
+    if (clipped)
+      break
+    left -= bytes
+  }
+  return served
+}
+
 export async function readReview(options: {
   cwd: string
   page: string
@@ -292,7 +357,7 @@ export async function readReview(options: {
   cache: CacheRepositories
   running: (key: string) => Promise<RunningState>
   agent: boolean
-  /** The files whose highlighted rows to include; all of them when omitted. */
+  /** The files whose highlighted rows to include, in order while ROW_BYTES lasts (`servedRows`); all of them when omitted. */
   rows?: string[]
   /** The first group's files get their rows too, so an open needs one read (plans/fork/05). */
   firstRows?: boolean
@@ -315,7 +380,7 @@ export async function readReview(options: {
   const state: AnalysisState = run.streamId ? 'running' : !llm ? 'none' : llm.headSha === head ? 'current' : 'outdated'
   const resolved = resolveGroups(llm ? llm.groups : (await ruleBased.analyze(diff)).groups, diff.files)
   const first = options.firstRows ? resolved[0] : undefined
-  const wanted = options.rows && new Set([...options.rows, ...first ? firstRowFiles(first, diff.files) : []])
+  const served = servedRows(options.rows ? [...options.rows, ...first ? firstRowFiles(first, diff.files) : []] : diff.files.map(file => file.path), diff.files, colors)
   return {
     key,
     title: diff.title,
@@ -324,13 +389,13 @@ export async function readReview(options: {
     commits: (diff.commits ?? []).map(commit => ({ sha: commit.sha, subject: commit.message.split('\n')[0]!, author: commit.author?.name, date: commit.date })),
     source: llm ? 'llm' : 'rule-based',
     groups: resolved,
-    files: diff.files.map(({ hunks, ...file }) => ({
+    files: diff.files.map(({ hunks: _, ...file }) => ({
       ...file,
       reviewed: reviewed.has(file.sha),
       changed: changed.has(file.path),
       noisy: isNoisy(file.path),
       test: isTest(file.path),
-      ...!wanted || wanted.has(file.path) ? { hunks: hunks.map(hunk => ({ header: hunk.header, rows: hunkRows(hunk, file.path, colors) })) } : {},
+      ...served.get(file.path),
     })),
     analysis: { state, model: llm?.model, generatedAt: llm?.generatedAt, progress: run.progress, error: run.error, agent },
   }
@@ -357,8 +422,8 @@ export async function setReviewed(options: { cwd: string, page: string, cache: C
     await cache.diffs.setChangedSinceReviewed(key, remaining)
 }
 
-/** One file's whole new side around its hunks, from the diff the page shows. */
-export async function readFullFile(options: { cwd: string, page: string, path: string, colors: Colors }): Promise<Row[]> {
+/** One file's whole new side around its hunks, from the diff the page shows; `truncated` past ROW_BYTES, as one read carries no more. */
+export async function readFullFile(options: { cwd: string, page: string, path: string, colors: Colors }): Promise<{ rows: Row[], truncated?: true }> {
   const { cwd, page, path, colors } = options
   const source = createLocalSource({ cwd, target: await pageTarget(cwd, page) })
   const diff = await source.fetch()
@@ -368,5 +433,7 @@ export async function readFullFile(options: { cwd: string, page: string, path: s
   const text = file.status === 'removed' ? undefined : await source.loadFile(path, diff.head.sha)
   if (text === undefined)
     throw new ReviewError(404, `No text for ${path}`)
-  return fullRows(file, text, colors)
+  const rows = fullRows(file, text, colors)
+  const [count] = rowsWithin(rows, ROW_BYTES)
+  return count < rows.length ? { rows: rows.slice(0, count), truncated: true } : { rows }
 }
