@@ -139,6 +139,24 @@ describe('local source', () => {
     expect(twoDot.files.map(f => [f.path, f.status])).toEqual([['feat.ts', 'added'], ['main.ts', 'removed']])
   })
 
+  it('names a diff by the same shas before it is read, with no head for the working tree', async () => {
+    write('a.ts', 'one\n')
+    const root = commit('init')
+    sh('switch', '-q', '-c', 'feat')
+    write('feat.ts', 'feat\n')
+    commit('feat')
+    sh('switch', '-q', 'main')
+    write('main.ts', 'main\n')
+    commit('main moves on')
+
+    for (const target of ['HEAD', root, 'main..feat', 'main...feat']) {
+      const source = createLocalSource({ cwd: repo, target })
+      const diff = await source.fetch()
+      expect(await source.revisions(), target).toEqual({ base: diff.base!.sha, head: diff.head!.sha })
+    }
+    expect(await createLocalSource({ cwd: repo, target: '' }).revisions()).toEqual({ base: sh('rev-parse', 'HEAD') })
+  })
+
   it('keeps renames, binary files and quoted paths', async () => {
     write('old.ts', 'same content\n'.repeat(10))
     write('logo.bin', 'x')

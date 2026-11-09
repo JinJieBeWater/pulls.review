@@ -16,10 +16,13 @@ const MAX_PATCH_BYTES = 512 * 1024
 /** The working tree has no sha; its side of a diff is named by a hash of the diff itself. */
 const WORKTREE_PREFIX = 'worktree:'
 
-interface Resolved {
+export interface Revisions {
   base: string
   /** `undefined` for the working tree. */
   head?: string
+}
+
+interface Resolved extends Revisions {
   title: string
   commits: Commit[]
 }
@@ -41,26 +44,34 @@ async function commitsBetween(root: string, range: string[]): Promise<Commit[]> 
   })
 }
 
-async function resolveTarget(root: string, target: LocalTarget, text: string): Promise<Resolved> {
+/** The diff's base and head shas, without its commits: `head` is left out for the working tree, named only once diffed. */
+async function revisions(root: string, target: LocalTarget): Promise<Revisions> {
   switch (target.kind) {
     case 'worktree': {
       const head = await tryGit(root, ['rev-parse', '--verify', '-q', 'HEAD'])
-      return { base: head?.trim() || await emptyTree(root), title: 'Working tree', commits: [] }
+      return { base: head?.trim() || await emptyTree(root) }
     }
     case 'commit': {
       const sha = await revParse(root, target.rev)
       const parent = (await tryGit(root, ['rev-parse', '--verify', '-q', `${sha}^`]))?.trim()
-      const commits = await commitsBetween(root, ['-1', sha])
-      return { base: parent || await emptyTree(root), head: sha, title: commits[0]?.message.split('\n')[0] ?? text, commits }
+      return { base: parent || await emptyTree(root), head: sha }
     }
     case 'range': {
       const head = await revParse(root, target.head)
       const base = target.mergeBase
         ? (await git(root, ['merge-base', await revParse(root, target.base), head])).trim()
         : await revParse(root, target.base)
-      return { base, head, title: text, commits: await commitsBetween(root, [`${base}..${head}`]) }
+      return { base, head }
     }
   }
+}
+
+async function resolveTarget(root: string, target: LocalTarget, text: string): Promise<Resolved> {
+  const { base, head } = await revisions(root, target)
+  if (!head)
+    return { base, title: 'Working tree', commits: [] }
+  const commits = await commitsBetween(root, target.kind === 'commit' ? ['-1', head] : [`${base}..${head}`])
+  return { base, head, title: target.kind === 'commit' ? commits[0]?.message.split('\n')[0] ?? text : text, commits }
 }
 
 /**
@@ -108,21 +119,21 @@ export interface LocalSourceOptions {
   target: string
 }
 
-/** A local diff can always be refreshed and expanded to full files. */
-export type LocalSource = DiffSource & Required<Pick<DiffSource, 'fingerprint' | 'loadFile'>>
+/** A local diff can always be refreshed and expanded to full files, and named by its shas before it is read. */
+export type LocalSource = DiffSource & Required<Pick<DiffSource, 'fingerprint' | 'loadFile'>> & { revisions: () => Promise<Revisions> }
 
 /** A local repository through `git` (Node only). No reviews or sharing: a local diff has no review lifecycle. */
 export function createLocalSource({ cwd, target }: LocalSourceOptions): LocalSource {
   const parsed = parseTarget(target)
   const root = git(cwd, ['rev-parse', '--show-toplevel']).then(out => out.trim())
 
-  async function diffText(resolved: Resolved): Promise<string> {
+  async function diffText(resolved: Revisions): Promise<string> {
     return resolved.head
       ? git(await root, [...DIFF_ARGS, resolved.base, resolved.head, '--'])
       : worktreeDiff(await root, resolved.base)
   }
 
-  async function headSha(resolved: Resolved, text: string): Promise<string> {
+  async function headSha(resolved: Revisions, text: string): Promise<string> {
     // The base is part of it: a new commit can leave the remaining diff text unchanged.
     return resolved.head ?? `${WORKTREE_PREFIX}${await computeContentHash(`${resolved.base}\n${text}`)}`
   }
@@ -149,8 +160,9 @@ export function createLocalSource({ cwd, target }: LocalSourceOptions): LocalSou
         files,
       }
     },
+    revisions: async () => revisions(await root, parsed),
     async fingerprint() {
-      const resolved = await resolveTarget(await root, parsed, target)
+      const resolved = await revisions(await root, parsed)
       return resolved.head ?? headSha(resolved, await diffText(resolved))
     },
     async loadFile(path, sha) {
