@@ -151,23 +151,25 @@ export function createDiffCache(storage: Storage, reviewMarks: ReviewMarks, budg
 
     const sorted = (await listMetas()).sort((a, b) => b.lastViewedAt - a.lastViewedAt)
     let totalBytes = 0
-    const kept: PrCacheMeta[] = []
     const evicted: PrCacheMeta[] = []
     for (const [index, meta] of sorted.entries()) {
       totalBytes += meta.sizeBytes
-      if (index < maxEntries && totalBytes <= maxBytes)
-        kept.push(meta)
-      else
+      if (index >= maxEntries || totalBytes > maxBytes)
         evicted.push(meta)
     }
     if (evicted.length === 0)
       return
 
-    await Promise.all(evicted.flatMap(meta => [
-      storage.removeItem(`${META_PREFIX}${meta.key}`),
-      storage.removeItem(`${BODY_PREFIX}${meta.key}`),
-    ]))
-    await reviewMarks.prune(new Set(kept.flatMap(meta => meta.fileShas)))
+    // An entry viewed since it was chosen stays: by then it may hold a fresh analysis.
+    await Promise.all(evicted.map(meta => exclusive(meta.key, async () => {
+      if ((await getMeta(meta.key))?.lastViewedAt !== meta.lastViewedAt)
+        return
+      await Promise.all([
+        storage.removeItem(`${META_PREFIX}${meta.key}`),
+        storage.removeItem(`${BODY_PREFIX}${meta.key}`),
+      ])
+    })))
+    await reviewMarks.prune(new Set((await listMetas()).flatMap(meta => meta.fileShas)))
   }
 
   /**

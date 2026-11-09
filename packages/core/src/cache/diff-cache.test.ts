@@ -199,6 +199,34 @@ describe('diff cache', () => {
     expect(await marks.get(['sha-old', 'sha-new'])).toEqual(new Set(['sha-new']))
   })
 
+  it('keeps an entry viewed and analyzed after an eviction chose it, and its review marks', async () => {
+    const { cache, marks } = cacheWith({ maxEntries: 1 })
+    await cache.put(makeEntry('a', 'sha-a', 1000))
+    await marks.set(['sha-a'], true)
+    // Hold the eviction's read of `a` until `a` has been viewed and analyzed.
+    let reached!: () => void
+    let release!: () => void
+    const atRead = new Promise<void>(resolve => reached = resolve)
+    const gate = new Promise<void>(resolve => release = resolve)
+    const getItems = storage.getItems
+    storage.getItems = (async (...args: Parameters<typeof getItems>) => {
+      const values = await getItems(...args)
+      reached()
+      await gate
+      return values
+    }) as typeof getItems
+    const evicting = cache.put(makeEntry('b', 'sha-b', 2000))
+    await atRead
+    const llm = { source: 'llm' as const, groups: [], schemaVersion: 1, generatedAt: 'now', model: 'paid' }
+    await cache.touch('a')
+    await cache.setAnalyzedResult('a', 'llm', llm)
+    release()
+    await evicting
+
+    expect((await cache.get('a'))?.analyzedBy.llm).toEqual(llm)
+    expect(await marks.get(['sha-a'])).toEqual(new Set(['sha-a']))
+  })
+
   it('listRecent returns metadata most-recently-viewed first, capped at the limit', async () => {
     const { cache } = cacheWith()
     await cache.put(makeEntry('old', 'sha-old', 1000))
