@@ -1,9 +1,9 @@
 import type { Commit, DiffsPayload } from '../types/diff'
 import type { DiffSource } from '../types/source'
 import type { LocalTarget } from './target'
-import { copyFile, mkdtemp, readFile, realpath, rm } from 'node:fs/promises'
+import { copyFile, lstat, mkdtemp, readFile, readlink, realpath, rm } from 'node:fs/promises'
 import { devNull, tmpdir } from 'node:os'
-import { isAbsolute, join, relative, resolve } from 'node:path'
+import { basename, dirname, isAbsolute, join, relative, resolve } from 'node:path'
 import { computeContentHash, parsePatch } from '../patch-parser'
 import { serializeRef } from '../types/source'
 import { git, tryGit } from './git'
@@ -156,11 +156,16 @@ export function createLocalSource({ cwd, target }: LocalSourceOptions): LocalSou
     async loadFile(path, sha) {
       const repo = await root
       if (sha.startsWith(WORKTREE_PREFIX)) {
-        // `path` may come from a browser over RPC, and a symlink may point anywhere: never read outside the repository.
-        const real = await realpath(resolve(repo, path)).catch(() => undefined)
+        // `path` may come from a browser over RPC, and a symlinked directory may point anywhere: never read outside the repository.
+        const full = resolve(repo, path)
+        const parent = await realpath(dirname(full)).catch(() => undefined)
+        const real = parent && join(parent, basename(full))
         const inside = real && relative(await realpath(repo), real)
-        if (!inside || inside.startsWith('..') || isAbsolute(inside))
+        if (!real || !inside || inside.startsWith('..') || isAbsolute(inside))
           return undefined
+        // A symlink's text is its target, as Git stores it, not the file it points to.
+        if ((await lstat(real).catch(() => undefined))?.isSymbolicLink())
+          return readlink(real, 'utf8')
         return readFile(real, 'utf8').catch(() => undefined)
       }
       if (await tryGit(repo, ['cat-file', '-e', `${sha}:${path}`]) === undefined)

@@ -59,7 +59,7 @@ describe('local source', () => {
     expect(await source.loadFile!('../outside.txt', diff.head!.sha)).toBeUndefined()
   })
 
-  it('reads no working-tree file through a symlink that leaves the repository', async () => {
+  it('reads a working-tree symlink as its link text, as Git stores it, and no file through one that leaves the repository', async () => {
     write('a.ts', 'one\n')
     commit('init')
     const outside = mkdtempSync(join(tmpdir(), 'pulls-review-outside-'))
@@ -67,11 +67,15 @@ describe('local source', () => {
       writeFileSync(join(outside, 'secret.txt'), 'OUTSIDE\n')
       symlinkSync(join(outside, 'secret.txt'), join(repo, 'link.txt'))
       symlinkSync('a.ts', join(repo, 'alias.ts'))
+      symlinkSync(outside, join(repo, 'out'))
       const source = createLocalSource({ cwd: repo, target: '' })
       const { head, files } = await source.fetch()
-      expect(files.map(file => file.path)).toEqual(['alias.ts', 'link.txt'])
-      expect(await source.loadFile!('link.txt', head!.sha)).toBeUndefined()
-      expect(await source.loadFile!('alias.ts', head!.sha)).toBe('one\n')
+      expect(files.map(file => file.path)).toEqual(['alias.ts', 'link.txt', 'out'])
+      expect(await source.loadFile!('link.txt', head!.sha)).toBe(join(outside, 'secret.txt'))
+      expect(await source.loadFile!('alias.ts', head!.sha)).toBe('a.ts')
+      expect(await source.loadFile!('out/secret.txt', head!.sha)).toBeUndefined()
+      const committed = commit('links')
+      expect(await source.loadFile!('alias.ts', committed)).toBe('a.ts')
     }
     finally {
       rmSync(outside, { recursive: true, force: true })
