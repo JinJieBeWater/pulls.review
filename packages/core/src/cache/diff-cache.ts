@@ -20,6 +20,9 @@ export interface CacheBudget {
   maxEntries?: number
 }
 
+/** Runs `task` while no other holder of the lock writes `key`: other processes sharing the storage, which the in-process queue can't see. */
+export type KeyLock = <T>(key: string, task: () => Promise<T>) => Promise<T>
+
 export interface DiffCache {
   get: (key: string) => Promise<PrCacheEntry | undefined>
   /** Writes a whole entry as given, replacing what was there. */
@@ -72,15 +75,16 @@ function join(meta: PrCacheMeta, body: PrCacheBody): PrCacheEntry {
  * Cached diffs, split into a `pr-meta:*` and a `pr-body:*` document per key so
  * eviction and listing never load whole diffs. Writes to one key run one at a
  * time, so overlapping read-modify-writes (a review refetch next to a shared-result
- * load) can't drop each other's changes.
+ * load) can't drop each other's changes; with `lock`, across the processes sharing it too.
  */
-export function createDiffCache(storage: Storage, reviewMarks: ReviewMarks, budget: CacheBudget = {}): DiffCache {
+export function createDiffCache(storage: Storage, reviewMarks: ReviewMarks, budget: CacheBudget = {}, lock?: KeyLock): DiffCache {
   const maxBytes = budget.maxBytes ?? DEFAULT_MAX_BUDGET_BYTES
   const maxEntries = budget.maxEntries ?? DEFAULT_MAX_ENTRY_COUNT
   const queues = new Map<string, Promise<unknown>>()
 
   function exclusive<T>(key: string, task: () => Promise<T>): Promise<T> {
-    const run = (queues.get(key) ?? Promise.resolve()).then(task, task)
+    const locked = () => lock ? lock(key, task) : task()
+    const run = (queues.get(key) ?? Promise.resolve()).then(locked, locked)
     const settled = run.catch(() => {})
     queues.set(key, settled)
     void settled.then(() => {

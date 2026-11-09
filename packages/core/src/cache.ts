@@ -1,6 +1,6 @@
 /** Persistence as repositories over any unstorage `Storage` (IndexedDB, memory, fs, ...). */
 import type { Storage } from 'unstorage'
-import type { CacheBudget, DiffCache } from './cache/diff-cache'
+import type { CacheBudget, DiffCache, KeyLock } from './cache/diff-cache'
 import type { FileContentCache } from './cache/file-content-cache'
 import type { PullRequestListCache } from './cache/pull-request-list-cache'
 import type { ReviewMarks } from './cache/review-marks'
@@ -23,10 +23,10 @@ export interface CacheRepositories {
 }
 
 /** Every collection shares one storage by key prefix (`pr-meta:*`, `review:*`, ...). */
-export function createCacheRepositories(storage: Storage, budget?: CacheBudget): CacheRepositories {
+export function createCacheRepositories(storage: Storage, budget?: CacheBudget, lock?: KeyLock): CacheRepositories {
   const reviewMarks = createReviewMarks(storage)
   return {
-    diffs: createDiffCache(storage, reviewMarks, budget),
+    diffs: createDiffCache(storage, reviewMarks, budget, lock),
     reviewMarks,
     fileContents: createFileContentCache(storage),
     pullRequestLists: createPullRequestListCache(storage),
