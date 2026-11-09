@@ -5,12 +5,10 @@ import type { RunningState } from './schema'
 import { Buffer } from 'node:buffer'
 import { codeToTokens, isSupportedLanguage } from '@pierre/highlights'
 import { createRuleBasedAdapter, GENERATED_PATTERNS, TEST_PATTERNS } from '@pulls.review/core/analyze'
-import { createCacheRepositories } from '@pulls.review/core/cache'
 import { createLocalSource } from '@pulls.review/core/local'
 import picomatch from 'picomatch'
-import { createStorage } from 'unstorage'
 import * as v from 'valibot'
-import { createRepoCacheDriver, repoCacheDir } from '../storage'
+import { createRepoCaches, repoCacheDir } from '../storage'
 import { targetForPage } from './analysis'
 
 /** Syntax kinds the caller colors; `foreground` is everything else (plans/fork/04). */
@@ -229,7 +227,7 @@ export function createReviewCaches() {
     const dir = await repoCacheDir(cwd)
     let cache = caches.get(dir)
     if (!cache) {
-      cache = createRepoCacheDriver(cwd).then(driver => createCacheRepositories(createStorage({ driver })))
+      cache = createRepoCaches(cwd)
       caches.set(dir, cache)
     }
     return cache
