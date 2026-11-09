@@ -25,6 +25,8 @@ export interface Row {
   old?: number
   new?: number
   tokens: Token[]
+  /** How wide its tokens draw (`columnsOf`), on every row a read sends. */
+  columns?: number
 }
 export interface ReviewNote {
   text: string
@@ -108,6 +110,17 @@ export function highlight(text: string, path: string, colors: Colors): Token[][]
     }
     return out
   })
+}
+
+// Wide (CJK and up) counts 2: a BMP character is 1 unit plus 1 here; an astral one, 2 units (surrogates aren't matched).
+const WIDE = /[\u2E80-\uD7FF\uE000-\uFFFF]/g
+
+/** The columns tokens take as the pane draws them, a tab 4: the pane's own rule (`rows.js` in herdr-t3), kept by shared cases. */
+export function columnsOf(tokens: Token[]): number {
+  return tokens.reduce((n, [text]) => {
+    const spaced = text.replaceAll('\t', '    ')
+    return n + spaced.length + (spaced.match(WIDE)?.length ?? 0)
+  }, 0)
 }
 
 /** A hunk's patch lines, one a row. */
@@ -281,17 +294,19 @@ export class ReviewError extends Error {
 }
 
 /**
- * What one read's rows still carry. `bytes` of JSON: Herdr reads at most 8 MiB, and a line's tokens can outweigh its text many
- * times. `rows` and `tokens`: the pane builds a read's rows in one render, which Herdr stops past about 50 ms; real opens of
- * about 3000 rows and 10,000 tokens build in time, while bytes alone let through 80,000 short rows or 320,000 tokens.
+ * What one read's rows still carry. `bytes` of JSON, about 600 KB: the pane parses a read on its one thread, and with a large
+ * page's files and groups (444 KB measured) a read stays near 1 MiB; a line's tokens can outweigh its text many times.
+ * `rows` and `tokens` bound what the pane builds from one read, where bytes alone let through 80,000 short rows or 320,000
+ * tokens. They don't make it fit one render: a real first read of 2,865 rows and 9,185 tokens ran past the 50 ms Herdr allows.
  * shortcut: the page's files and groups aren't counted; a page of 10,000 files takes about 4 MiB of them, count them if one comes near.
  */
 interface Budget { bytes: number, rows: number, tokens: number }
-const readBudget = (): Budget => ({ bytes: 4 * 1024 * 1024, rows: 3000, tokens: 10_000 })
+const readBudget = (): Budget => ({ bytes: 600 * 1024, rows: 3000, tokens: 10_000 })
 
-/** How many of `rows`, from the first, fit in what `left` carries, taken from it. */
+/** How many of `rows`, from the first, fit in what `left` carries, taken from it. Each gets its `columns`, counted too. */
 function rowsWithin(rows: Row[], left: Budget): number {
   for (const [index, row] of rows.entries()) {
+    row.columns = columnsOf(row.tokens)
     const bytes = Buffer.byteLength(JSON.stringify(row)) + 1
     if (bytes > left.bytes || left.rows < 1 || row.tokens.length > left.tokens)
       return index
