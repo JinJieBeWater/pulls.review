@@ -68,6 +68,7 @@ const RULE_TEXT = {
   config: ['Config', 'Configuration changes.'],
   deps: ['Dependencies', 'Dependency version changes.'],
   generated: ['Generated', 'Generated or build output changes.'],
+  assets: ['Assets', 'Vector images and icons.'],
 } as const
 const ruleBased = createRuleBasedAdapter(key => ({ label: RULE_TEXT[key][0], summary: RULE_TEXT[key][1] }))
 const isNoisy = picomatch(GENERATED_PATTERNS)
