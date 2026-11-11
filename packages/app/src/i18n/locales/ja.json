@@ -419,7 +419,8 @@
     "tests": { "label": "テスト", "summary": "この変更に対するテスト。" },
     "config": { "label": "設定", "summary": "設定の変更。" },
     "deps": { "label": "依存関係", "summary": "依存関係のバージョン変更。" },
-    "generated": { "label": "生成物", "summary": "生成物やビルド成果物の変更。" }
+    "generated": { "label": "生成物", "summary": "生成物やビルド成果物の変更。" },
+    "assets": { "label": "アセット", "summary": "ベクター画像とアイコン。" }
   },
   "errors": {
     "tokenRequired": "この pull request に書き込むには GitHub トークンが必要です。",

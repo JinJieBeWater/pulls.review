@@ -36,6 +36,15 @@ describe('defaultRules', () => {
     ['server/apps/api/drizzle/meta/0031_snapshot.json', 'generated'],
     ['server/apps/api/drizzle/meta/_journal.json', 'generated'],
     ['src/index.ts', 'code'],
+    // A license or notice is documentation, whatever it's suffixed with.
+    ['LICENSE', 'docs'],
+    ['vendor/lib/LICENSE-MIT', 'docs'],
+    ['NOTICE', 'docs'],
+    // SVG is text, so it isn't caught as binary: an asset, unless a more specific rule claims it first.
+    ['src/icons/logo.svg', 'assets'],
+    ['docs/diagram.svg', 'docs'],
+    ['src/__fixtures__/icon.svg', 'tests'],
+    ['dist/sprite.svg', 'generated'],
   ])('files %s under the %s rule', (path, expected) => {
     expect(ruleKey(path)).toBe(expected)
   })

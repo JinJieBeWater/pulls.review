@@ -419,7 +419,8 @@
     "tests": { "label": "測試", "summary": "針對此變更的測試覆蓋。" },
     "config": { "label": "設定", "summary": "設定變更。" },
     "deps": { "label": "相依套件", "summary": "相依套件版本變更。" },
-    "generated": { "label": "產生檔案", "summary": "產生或建置產物的變更。" }
+    "generated": { "label": "產生檔案", "summary": "產生或建置產物的變更。" },
+    "assets": { "label": "資源", "summary": "向量圖與圖示。" }
   },
   "errors": {
     "tokenRequired": "寫入此 pull request 需要 GitHub token。",

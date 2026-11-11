@@ -419,7 +419,8 @@
     "tests": { "label": "Tests", "summary": "Testabdeckung für die Änderung." },
     "config": { "label": "Konfiguration", "summary": "Konfigurationsänderungen." },
     "deps": { "label": "Abhängigkeiten", "summary": "Versionsänderungen von Abhängigkeiten." },
-    "generated": { "label": "Generiert", "summary": "Änderungen an generierten oder Build-Dateien." }
+    "generated": { "label": "Generiert", "summary": "Änderungen an generierten oder Build-Dateien." },
+    "assets": { "label": "Assets", "summary": "Vektorgrafiken und Icons." }
   },
   "errors": {
     "tokenRequired": "Zum Schreiben in diesen Pull Request ist ein GitHub-Token erforderlich.",

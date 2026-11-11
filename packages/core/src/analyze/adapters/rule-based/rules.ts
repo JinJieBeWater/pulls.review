@@ -1,6 +1,6 @@
 import type { DiffCategory } from '../../../types/analyze'
 
-export type RuleKey = 'docs' | 'code' | 'tests' | 'config' | 'deps' | 'generated' | 'other'
+export type RuleKey = 'docs' | 'code' | 'tests' | 'config' | 'deps' | 'generated' | 'assets' | 'other'
 
 /**
  * The words a rule's group shows. Supplied by the caller (so the UI can translate
@@ -88,6 +88,10 @@ export const defaultRules: GroupRule[] = [
       '**/*.mdc',
       '**/docs/**',
       '**/README*',
+      '**/LICENSE*',
+      '**/LICENCE*',
+      '**/NOTICE*',
+      '**/COPYING*',
     ],
   },
   codeRule,
@@ -128,6 +132,13 @@ export const defaultRules: GroupRule[] = [
     key: 'generated',
     category: 'other',
     patterns: GENERATED_PATTERNS,
+  },
+  // Text assets: binary ones (images, fonts) already land in `other` regardless of path.
+  // After docs, tests and generated, so an SVG those claim stays with them.
+  {
+    key: 'assets',
+    category: 'assets',
+    patterns: ['**/*.svg'],
   },
   otherRule,
 ]

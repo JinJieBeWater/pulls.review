@@ -419,7 +419,8 @@
     "tests": { "label": "测试", "summary": "针对此变更的测试覆盖。" },
     "config": { "label": "配置", "summary": "配置变更。" },
     "deps": { "label": "依赖", "summary": "依赖版本变更。" },
-    "generated": { "label": "生成文件", "summary": "生成或构建产物的变更。" }
+    "generated": { "label": "生成文件", "summary": "生成或构建产物的变更。" },
+    "assets": { "label": "资源", "summary": "矢量图和图标。" }
   },
   "errors": {
     "tokenRequired": "写入此 pull request 需要 GitHub token。",

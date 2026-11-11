@@ -419,7 +419,8 @@
     "tests": { "label": "테스트", "summary": "이 변경에 대한 테스트." },
     "config": { "label": "설정", "summary": "설정 변경." },
     "deps": { "label": "의존성", "summary": "의존성 버전 변경." },
-    "generated": { "label": "생성 파일", "summary": "생성물 또는 빌드 산출물 변경." }
+    "generated": { "label": "생성 파일", "summary": "생성물 또는 빌드 산출물 변경." },
+    "assets": { "label": "에셋", "summary": "벡터 이미지와 아이콘." }
   },
   "errors": {
     "tokenRequired": "이 pull request에 쓰려면 GitHub 토큰이 필요합니다.",

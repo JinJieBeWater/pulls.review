@@ -55,6 +55,20 @@ describe('ruleBasedAdapter', () => {
     expect(byCategory.code).toEqual(['src/index.ts'])
   })
 
+  it('groups text assets (SVG) under "assets", binary images still under "other"', async () => {
+    const diff: DiffsPayload = {
+      ref: { kind: 'github-pr', owner: 'o', repo: 'r', number: '1' },
+      title: 't',
+      description: '',
+      files: [file('src/icons/logo.svg'), file('src/icons/logo.png', true), file('src/index.ts')],
+    }
+    const result = await ruleBasedAdapter.analyze(diff)
+    const byCategory = Object.fromEntries(result.groups.map(g => [g.key, g.filePaths]))
+    expect(byCategory.assets).toEqual(['src/icons/logo.svg'])
+    expect(byCategory.other).toEqual(['src/icons/logo.png'])
+    expect(result.groups.find(g => g.key === 'assets')?.category).toBe('assets')
+  })
+
   it('is always available and needs no network', () => {
     expect(ruleBasedAdapter.available).toBe(true)
   })

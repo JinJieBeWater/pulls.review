@@ -419,7 +419,11 @@
     "tests": { "label": "Pruebas", "summary": "Cobertura de pruebas del cambio." },
     "config": { "label": "Configuración", "summary": "Cambios de configuración." },
     "deps": { "label": "Dependencias", "summary": "Cambios de versión de dependencias." },
-    "generated": { "label": "Generados", "summary": "Cambios en archivos generados o de build." }
+    "generated": { "label": "Generados", "summary": "Cambios en archivos generados o de build." },
+    "assets": {
+      "label": "Recursos",
+      "summary": "Imágenes vectoriales e iconos."
+    }
   },
   "errors": {
     "tokenRequired": "Se necesita un token de GitHub para escribir en este pull request.",

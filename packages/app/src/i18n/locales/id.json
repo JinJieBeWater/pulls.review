@@ -419,7 +419,8 @@
     "tests": { "label": "Pengujian", "summary": "Cakupan pengujian untuk perubahan ini." },
     "config": { "label": "Konfigurasi", "summary": "Perubahan konfigurasi." },
     "deps": { "label": "Dependensi", "summary": "Perubahan versi dependensi." },
-    "generated": { "label": "Hasil generate", "summary": "Perubahan berkas hasil generate atau build." }
+    "generated": { "label": "Hasil generate", "summary": "Perubahan berkas hasil generate atau build." },
+    "assets": { "label": "Aset", "summary": "Gambar vektor dan ikon." }
   },
   "errors": {
     "tokenRequired": "Token GitHub diperlukan untuk menulis ke pull request ini.",

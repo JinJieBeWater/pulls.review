@@ -428,7 +428,8 @@
     "generated": {
       "label": "Generated",
       "summary": "Generated or build output changes."
-    }
+    },
+    "assets": { "label": "Assets", "summary": "Vector images and icons." }
   },
   "errors": {
     "tokenRequired": "A GitHub token is required to write to this pull request.",

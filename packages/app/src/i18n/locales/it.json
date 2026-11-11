@@ -419,7 +419,8 @@
     "tests": { "label": "Test", "summary": "Copertura dei test per la modifica." },
     "config": { "label": "Configurazione", "summary": "Modifiche di configurazione." },
     "deps": { "label": "Dipendenze", "summary": "Modifiche di versione delle dipendenze." },
-    "generated": { "label": "Generati", "summary": "Modifiche a file generati o di build." }
+    "generated": { "label": "Generati", "summary": "Modifiche a file generati o di build." },
+    "assets": { "label": "Risorse", "summary": "Immagini vettoriali e icone." }
   },
   "errors": {
     "tokenRequired": "Serve un token GitHub per scrivere in questa pull request.",
