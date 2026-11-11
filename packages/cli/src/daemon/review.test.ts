@@ -12,7 +12,7 @@ import { createCacheRepositories } from '@pulls.review/core/cache'
 import { createLocalSource } from '@pulls.review/core/local'
 import { createStorage } from 'unstorage'
 import { afterEach, expect, it, vi } from 'vitest'
-import { columnsOf, fullRows, highlight, hunkRows, readFullFile, readReview, readRows, readStatus, resolveGroups, setReviewed } from './review'
+import { fullRows, hunkRows, readFullFile, readReview, readRows, readStatus, resolveGroups, setReviewed } from './review'
 
 const exec = promisify(execFile)
 const colors = { foreground: '#cccccc', keyword: '#ff00ff', string: '#00ff00', comment: '#808080' }
@@ -42,29 +42,6 @@ it('highlights each side of a hunk as one text, numbering old and new lines', ()
   expect(rows[1]!.tokens).toContainEqual(['"x"', '#00ff00'])
   // The comment's second line is still a comment: the side was read as one text.
   expect(rows[3]!.tokens).toEqual([['   two */', '#808080']])
-})
-
-it('counts a row\'s columns as the pane draws them: a tab 4, a wide character 2, after the cut at 1000', async () => {
-  // The pane's cases (herdr-t3 `rows.js`), the same on both sides.
-  const cases: [Parameters<typeof columnsOf>[0], number][] = [
-    [[['abc']], 3],
-    [[['\tx']], 5],
-    [[['中文']], 4],
-    [[['😀']], 2],
-    [[['a'], ['\t'], ['中']], 7],
-    [[['a'.repeat(1000)]], 1000],
-    [highlight('a'.repeat(1001), 'a.txt', colors)[0]!, 1000],
-  ]
-  expect(cases.map(([tokens]) => columnsOf(tokens))).toEqual(cases.map(([, columns]) => columns))
-  // Every row a read sends carries them.
-  const { root } = await repo()
-  await writeFile(join(root, 'a.txt'), '\t中x\n')
-  const cache = createCacheRepositories(createStorage())
-  const shown = await readReview({ cwd: root, page: '/worktree', colors, cache, running: async () => ({}), agent: false })
-  const rows = shown.files.find(file => file.path === 'a.txt')!.hunks!.flatMap(hunk => hunk.rows)
-  const whole = await readFullFile({ cwd: root, page: '/worktree', path: 'a.txt', colors, cache })
-  const later = await readRows({ cwd: root, page: '/worktree', colors, cache, files: ['a.txt'], base: shown.base!.sha, head: shown.head!.sha }) as { files: ReviewFile[] }
-  expect([rows, whole.rows, later.files[0]!.hunks![0]!.rows].map(rows => rows.map(row => row.columns))).toEqual([[7], [7], [7]])
 })
 
 it('lays a file\'s whole new side around its hunks', () => {

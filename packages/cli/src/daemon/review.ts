@@ -25,8 +25,6 @@ export interface Row {
   old?: number
   new?: number
   tokens: Token[]
-  /** How wide its tokens draw (`columnsOf`), on every row a read sends. */
-  columns?: number
 }
 export interface ReviewNote {
   text: string
@@ -111,17 +109,6 @@ export function highlight(text: string, path: string, colors: Colors): Token[][]
     }
     return out
   })
-}
-
-// Wide (CJK and up) counts 2: a BMP character is 1 unit plus 1 here; an astral one, 2 units (surrogates aren't matched).
-const WIDE = /[\u2E80-\uD7FF\uE000-\uFFFF]/g
-
-/** The columns tokens take as the pane draws them, a tab 4: the pane's own rule (`rows.js` in herdr-t3), kept by shared cases. */
-export function columnsOf(tokens: Token[]): number {
-  return tokens.reduce((n, [text]) => {
-    const spaced = text.replaceAll('\t', '    ')
-    return n + spaced.length + (spaced.match(WIDE)?.length ?? 0)
-  }, 0)
 }
 
 /** A hunk's patch lines, one a row. */
@@ -304,10 +291,9 @@ export class ReviewError extends Error {
 interface Budget { bytes: number, rows: number, tokens: number }
 const readBudget = (): Budget => ({ bytes: 600 * 1024, rows: 3000, tokens: 10_000 })
 
-/** How many of `rows`, from the first, fit in what `left` carries, taken from it. Each gets its `columns`, counted too. */
+/** How many of `rows`, from the first, fit in what `left` carries, taken from it. */
 function rowsWithin(rows: Row[], left: Budget): number {
   for (const [index, row] of rows.entries()) {
-    row.columns = columnsOf(row.tokens)
     const bytes = Buffer.byteLength(JSON.stringify(row)) + 1
     if (bytes > left.bytes || left.rows < 1 || row.tokens.length > left.tokens)
       return index

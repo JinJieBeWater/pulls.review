@@ -60,8 +60,8 @@ rest of `/api/*`. The body names a worktree by `path` (registered on first use, 
   tokens can outweigh its text many times and the pane parses a read on its one thread (with a
   large page's 444 KB of files and groups a read stays near 1 MiB), and 3000 rows and 10,000
   tokens, which bound what the pane builds from one read. They don't fit one render: a real
-  first read of 2,865 rows and 9,185 tokens ran past the 50 ms Herdr allows. Every row sent
-  carries `columns`, how wide its tokens draw by the pane's rule (a tab 4, a wide character 2).
+  first read of 2,865 rows and 9,185 tokens ran past the 50 ms Herdr allows. How wide a row
+  draws is the pane's to count: the daemon sends no width.
   A file that doesn't fit whole comes without `hunks`, for a later read to ask for; the
   first always comes, and one past the budget by itself is cut there and marked `clipped`. The
   daemon resolves the page's base and head shas first (core's local source `revisions()`): while
